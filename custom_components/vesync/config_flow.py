@@ -53,7 +53,7 @@ class VeSyncFlowHandler(ConfigFlow, domain=DOMAIN):
             time_zone=str(self.hass.config.time_zone),
             session=async_get_clientsession(self.hass),
         )
-        await async_authenticate(manager)
+        await async_authenticate(manager, username=username, password=password)
         return manager
 
     async def _capture_mfa(self, error: VeSyncMFARequired) -> ConfigFlowResult:
