@@ -1,6 +1,6 @@
 {
   "domain": "vesync",
-  "name": "VeSync 2FA Session Bridge",
+  "name": "VeSync 2FA",
   "codeowners": ["@ArrowSK"],
   "config_flow": true,
   "dhcp": [{"hostname": "levoit-*"}],
@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/ArrowSK/ha-vesync-2fa/issues",
   "loggers": ["pyvesync"],
   "requirements": ["pyvesync==3.4.2"],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }
