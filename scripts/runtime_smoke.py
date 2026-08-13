@@ -4,8 +4,17 @@
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
+import sys
 
 from pyvesync import VeSync
+
+# Running a script by path puts the scripts directory, rather than the repository
+# root, first on sys.path. Add the root explicitly so this check imports the
+# custom component exactly from the checked-out repository.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 MODULES = (
     "custom_components.vesync",
