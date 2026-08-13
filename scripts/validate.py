@@ -154,9 +154,10 @@ def main() -> None:
         fail("auth.py must not log raw authentication/challenge data")
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    readme_lower = readme.casefold()
     if "`vesync_2fa_probe`" not in readme:
         fail("README must document the isolated probe domain")
-    if "leave the existing built-in **VeSync** integration alone" not in readme:
+    if "leave the existing built-in **vesync** integration alone" not in readme_lower:
         fail("README must explicitly protect the built-in VeSync integration")
 
     forbidden_docs = (
