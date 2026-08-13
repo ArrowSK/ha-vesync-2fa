@@ -1,0 +1,23 @@
+name: HACS validation
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate as a HACS integration
+        uses: hacs/action@main
+        with:
+          category: integration
+          # This is intentionally an override of a Core integration, so it cannot
+          # be accepted into the default HACS catalogue. These repository-level
+          # catalogue checks are not relevant to custom-repository installation.
+          ignore: "brands description topics"

@@ -1,0 +1,15 @@
+VeSync 2FA Session Bridge
+
+This project contains code derived from and designed to override the VeSync
+integration in Home Assistant Core:
+https://github.com/home-assistant/core/tree/dev/homeassistant/components/vesync
+
+Home Assistant Core is Copyright (c) Home Assistant contributors and is licensed
+under the Apache License, Version 2.0.
+
+This project depends on pyvesync but does not bundle it:
+https://github.com/webdjoe/pyvesync
+pyvesync is licensed separately by its contributors under the MIT License.
+
+VeSync, Etekcity and Levoit are names/trademarks of their respective owners. No
+endorsement or affiliation is implied.
