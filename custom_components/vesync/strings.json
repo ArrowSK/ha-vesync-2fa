@@ -2,16 +2,20 @@
   "config": {
     "abort": {
       "already_configured": "VeSync account is already configured",
+      "mfa_protocol_unverified": "VeSync returned a real two-factor authentication challenge, but this development build does not yet submit the one-time code because the challenge endpoint has not been verified. Safe challenge metadata: {details}",
       "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
       "wrong_account": "The account you are trying to re-authenticate is different from the one configured"
     },
     "error": {
       "api_response_error": "API response error",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "server_error": "Server error occurred",
-      "two_factor_required": "VeSync requires 2FA for this sign-in. pyvesync does not yet provide the OTP challenge to Home Assistant. Temporarily disable 2FA in VeSync, submit this form once, then turn 2FA back on. This integration will save and reuse the authenticated VeSync session."
+      "server_error": "Server error occurred"
     },
     "step": {
+      "mfa_challenge": {
+        "description": "VeSync has confirmed that this sign-in requires a second factor. The integration captured only non-secret challenge metadata shown below. It does not ask for your code yet because the exact VeSync verification request still needs to be confirmed from a real challenge. This is deliberate: the integration will not guess authentication endpoints or risk locking your account.\n\nSafe metadata: `{details}`\n\nThis string may be posted in repository issue #1. It contains no password, token, account ID, email address, authorization code or MFA challenge token.",
+        "title": "VeSync two-factor challenge detected"
+      },
       "reauth_confirm": {
         "data": {
           "password": "[%key:common::config_flow::data::password%]",
@@ -21,7 +25,7 @@
           "password": "[%key:component::vesync::config::step::user::data_description::password%]",
           "username": "[%key:component::vesync::config::step::user::data_description::username%]"
         },
-        "description": "VeSync needs to authenticate this account again. If VeSync rejects the login because 2FA is enabled, temporarily disable 2FA for this one sign-in, then re-enable it immediately after Home Assistant reconnects.",
+        "description": "VeSync needs to authenticate this account again. Keep two-factor authentication enabled. If VeSync requests a second factor, the integration will move into the MFA flow instead of asking you to weaken the account security.",
         "title": "[%key:common::config_flow::title::reauth%]"
       },
       "user": {
@@ -33,8 +37,8 @@
           "password": "Password associated with your VeSync account",
           "username": "Email address associated with your VeSync account"
         },
-        "description": "Enter the account used in the VeSync app. After one successful sign-in, this integration stores the authenticated VeSync session and reuses it across Home Assistant restarts. If 2FA is already enabled and VeSync blocks this sign-in, temporarily disable 2FA once, sign in here, then turn 2FA back on.",
-        "title": "Enter username and password"
+        "description": "Enter the account used in the VeSync app. Leave two-factor authentication enabled. A normal sign-in continues automatically; a two-factor sign-in is detected and routed into the MFA flow.",
+        "title": "Enter VeSync account"
       }
     }
   },
@@ -115,6 +119,7 @@
   "exceptions": {
     "api_response_error": {"message": "Invalid response from the VeSync API"},
     "invalid_auth": {"message": "[%key:common::config_flow::error::invalid_auth%]"},
+    "mfa_required": {"message": "VeSync requires two-factor authentication for this account"},
     "server_error": {"message": "Server error occurred while connecting to VeSync"}
   },
   "services": {
