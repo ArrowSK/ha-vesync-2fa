@@ -12,11 +12,13 @@ MFA-required result rather than sending a code to an invented endpoint.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from aiohttp import ClientError
 from pyvesync import VeSync
-from pyvesync.const import REGION_API_MAP
+from pyvesync.const import API_TIMEOUT, REGION_API_MAP
 from pyvesync.models.vesync_models import RequestGetTokenModel
 from pyvesync.utils.errors import (
     VeSyncAPIResponseError,
@@ -152,19 +154,25 @@ async def _first_auth_request(
     if not base_url:
         raise VeSyncAPIResponseError("Unknown VeSync region")
 
-    async with session.post(
-        base_url + _AUTH_ENDPOINT,
-        json=request.to_dict(),
-        raise_for_status=False,
-    ) as response:
-        if response.status != 200:
-            raise VeSyncAPIStatusCodeError(str(response.status))
-        try:
-            payload = await response.json(content_type=None)
-        except (ValueError, TypeError) as exc:
-            raise VeSyncAPIResponseError(
-                "Error parsing VeSync authentication response"
-            ) from exc
+    try:
+        async with asyncio.timeout(API_TIMEOUT):
+            async with session.post(
+                base_url + _AUTH_ENDPOINT,
+                json=request.to_dict(),
+                raise_for_status=False,
+            ) as response:
+                if response.status != 200:
+                    raise VeSyncAPIStatusCodeError(str(response.status))
+                try:
+                    payload = await response.json(content_type=None)
+                except (ValueError, TypeError) as exc:
+                    raise VeSyncAPIResponseError(
+                        "Error parsing VeSync authentication response"
+                    ) from exc
+    except TimeoutError as exc:
+        raise VeSyncAPIResponseError("VeSync authentication request timed out") from exc
+    except ClientError as exc:
+        raise VeSyncAPIResponseError("VeSync authentication request failed") from exc
 
     if not isinstance(payload, dict):
         raise VeSyncAPIResponseError("Invalid VeSync authentication response")
