@@ -1,14 +1,15 @@
 """Safe first-stage VeSync authentication probe.
 
-The probe sends only VeSync's known password-authentication request. It never
-exchanges an authorization code for a cloud session and never submits a second
-factor. Raw response data is parsed immediately into a deliberately small,
-public-safe result object.
+The first request is the only VeSync MFA request we have verified from public
+implementations and live testing. Raw response data is reduced immediately to a
+public-safe result. For protocol discovery, the flow may also retain a minimal
+challenge context in memory only; it is never logged or written to a Home
+Assistant config entry.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Any, Literal
 
@@ -57,6 +58,28 @@ class ProbeResult:
             f"authorize_code={'yes' if self.has_authorize_code else 'no'}; "
             f"result_keys={keys}"
         )
+
+
+@dataclass(slots=True, frozen=True)
+class ChallengeContext:
+    """Sensitive MFA continuation context kept only inside the live flow.
+
+    Repr is intentionally suppressed for all fields that can identify the
+    account or authenticate a continuation request.
+    """
+
+    base_url: str = field(repr=False)
+    biz_token: str = field(repr=False)
+    account_id: str | None = field(default=None, repr=False)
+    common_payload: dict[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass(slots=True, frozen=True)
+class ProbeExchange:
+    """First-stage safe result plus optional in-memory MFA context."""
+
+    result: ProbeResult
+    challenge: ChallengeContext | None = field(default=None, repr=False)
 
 
 def _safe_name(value: str) -> str:
@@ -145,7 +168,45 @@ def parse_probe_response(response: dict[str, Any]) -> ProbeResult:
     )
 
 
-async def async_probe_auth(
+def _challenge_context(
+    *,
+    payload: dict[str, Any],
+    base_url: str,
+    request_payload: dict[str, Any],
+    safe_result: ProbeResult,
+) -> ChallengeContext | None:
+    """Extract only the secret fields needed for continuation discovery."""
+    if safe_result.outcome != "mfa_required":
+        return None
+
+    raw_result = payload.get("result")
+    if not isinstance(raw_result, dict):
+        return None
+
+    biz_token = raw_result.get("bizToken")
+    if not isinstance(biz_token, str) or not biz_token:
+        return None
+
+    account_id = raw_result.get("accountID")
+    if not isinstance(account_id, str) or not account_id:
+        account_id = None
+
+    # Reuse the same client identity/metadata as the verified first request, but
+    # never retain the password hash. The email may remain in this dictionary for
+    # the lifetime of the config flow because an unknown continuation route may
+    # require it; the dictionary is never persisted or displayed.
+    common_payload = dict(request_payload)
+    common_payload.pop("password", None)
+
+    return ChallengeContext(
+        base_url=base_url,
+        biz_token=biz_token,
+        account_id=account_id,
+        common_payload=common_payload,
+    )
+
+
+async def async_probe_auth_with_context(
     session: ClientSession,
     *,
     username: str,
@@ -153,8 +214,8 @@ async def async_probe_auth(
     country_code: str,
     api_region: str,
     time_zone: str,
-) -> ProbeResult:
-    """Send one first-stage VeSync login request and return only safe metadata."""
+) -> ProbeExchange:
+    """Send the verified first-stage request and retain MFA context in memory."""
     base_url = API_BASE_URL_EU if api_region == API_REGION_EU else API_BASE_URL_US
 
     request = RequestGetTokenModel(
@@ -164,11 +225,12 @@ async def async_probe_auth(
         userCountryCode=country_code,
         timeZone=time_zone,
     )
+    request_payload = request.to_dict()
 
     try:
         async with session.post(
             base_url + _AUTH_ENDPOINT,
-            json=request.to_dict(),
+            json=request_payload,
             timeout=_TIMEOUT,
             raise_for_status=False,
         ) as response:
@@ -188,4 +250,34 @@ async def async_probe_auth(
     if not isinstance(payload, dict):
         raise VeSyncProbeError("VeSync authentication response was not an object")
 
-    return parse_probe_response(payload)
+    safe_result = parse_probe_response(payload)
+    return ProbeExchange(
+        result=safe_result,
+        challenge=_challenge_context(
+            payload=payload,
+            base_url=base_url,
+            request_payload=request_payload,
+            safe_result=safe_result,
+        ),
+    )
+
+
+async def async_probe_auth(
+    session: ClientSession,
+    *,
+    username: str,
+    password: str,
+    country_code: str,
+    api_region: str,
+    time_zone: str,
+) -> ProbeResult:
+    """Compatibility wrapper returning only the public-safe first-stage result."""
+    exchange = await async_probe_auth_with_context(
+        session,
+        username=username,
+        password=password,
+        country_code=country_code,
+        api_region=api_region,
+        time_zone=time_zone,
+    )
+    return exchange.result
