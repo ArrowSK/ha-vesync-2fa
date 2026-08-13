@@ -19,6 +19,6 @@ jobs:
         with:
           python-version: "3.13"
       - name: Validate repository invariants
-        run: python scripts/validate_v040.py
+        run: python scripts/validate.py
       - name: Compile Python sources
         run: python -m compileall -q custom_components scripts
