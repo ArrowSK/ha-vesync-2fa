@@ -58,17 +58,24 @@ def main() -> None:
 
     if manifest["domain"] != "vesync":
         fail("domain must remain 'vesync' to preserve the existing integration")
+    if manifest["name"] != "VeSync 2FA":
+        fail("manifest name must describe the native 2FA project")
     if manifest["requirements"] != ["pyvesync==3.4.2"]:
         fail("pyvesync must stay pinned to the version validated for this release")
-    if manifest["version"] != "0.1.0":
+    if manifest["version"] != "0.2.0":
         fail("manifest version and release validation are out of sync")
     if hacs.get("homeassistant") != "2026.8.0":
         fail("HACS minimum Home Assistant version must remain explicit")
     if strings != translations:
         fail("translations/en.json must match strings.json in this repository")
 
-    if "two_factor_required" not in strings.get("config", {}).get("error", {}):
-        fail("the 2FA-specific config-flow error is missing")
+    config = strings.get("config", {})
+    if "mfa_challenge" not in config.get("step", {}):
+        fail("the MFA challenge discovery config-flow step is missing")
+    if "mfa_protocol_unverified" not in config.get("abort", {}):
+        fail("the unverified-protocol abort reason is missing")
+    if "mfa_required" not in strings.get("exceptions", {}):
+        fail("the MFA-required config-entry exception translation is missing")
 
     for platform in EXPECTED_PLATFORMS:
         path = INTEGRATION / f"{platform}.py"
@@ -79,7 +86,8 @@ def main() -> None:
         if expected_import not in text:
             fail(f"{platform}.py no longer delegates directly to Home Assistant Core")
 
-    flow_tree = ast.parse((INTEGRATION / "config_flow.py").read_text(encoding="utf-8"))
+    flow_text = (INTEGRATION / "config_flow.py").read_text(encoding="utf-8")
+    flow_tree = ast.parse(flow_text)
     assignments: dict[str, object] = {}
     for node in ast.walk(flow_tree):
         if isinstance(node, ast.ClassDef) and node.name == "VeSyncFlowHandler":
@@ -90,26 +98,68 @@ def main() -> None:
                         assignments[target.id] = item.value.value
     if assignments.get("VERSION") != 1 or assignments.get("MINOR_VERSION") != 3:
         fail("config-flow version must stay aligned with Home Assistant Core 2026.8.0")
+    for marker in (
+        "VeSyncMFARequired",
+        "async_authenticate",
+        "async_step_mfa_challenge",
+        "safe_summary",
+    ):
+        if marker not in flow_text:
+            fail(f"MFA flow invariant missing from config_flow.py: {marker}")
 
     init_text = (INTEGRATION / "__init__.py").read_text(encoding="utf-8")
     for marker in (
         "restore_session(manager, config_entry.data)",
         "merged_with_session(config_entry.data, manager)",
+        "async_authenticate(manager)",
         "async_forward_entry_setups(config_entry, PLATFORMS)",
         "_core_async_migrate_entry",
     ):
         if marker not in init_text:
-            fail(f"session/compatibility invariant missing from __init__.py: {marker}")
+            fail(f"authentication/compatibility invariant missing from __init__.py: {marker}")
+
+    auth_text = (INTEGRATION / "auth.py").read_text(encoding="utf-8")
+    for marker in (
+        "authByPWDOrOTM",
+        "mfaMethodList",
+        "bizToken",
+        "VeSyncMFARequired",
+        "safe_summary",
+        "_exchange_authorization_code",
+    ):
+        if marker not in auth_text:
+            fail(f"MFA discovery invariant missing from auth.py: {marker}")
+    if "logger." in auth_text or "_LOGGER." in auth_text:
+        fail("auth.py must not log raw authentication/challenge data")
 
     session_text = (INTEGRATION / "session.py").read_text(encoding="utf-8")
     if "manager.enabled = True" not in session_text:
         fail("restored pyvesync sessions must enable the manager before update()")
 
+    coordinator_text = (INTEGRATION / "coordinator.py").read_text(encoding="utf-8")
+    if "ConfigEntryAuthFailed" not in coordinator_text or "UpdateFailed" not in coordinator_text:
+        fail("expired sessions must be promoted into Home Assistant reauthentication")
+
+    # The previous prototype required disabling account security. That is no
+    # longer an accepted product path. Keep the public UI and README free of that
+    # workaround so it cannot accidentally reappear as advice.
+    forbidden_docs = (
+        "temporarily disable two-factor",
+        "temporarily disable 2fa",
+        "disable 2fa once",
+    )
+    for path in (ROOT / "README.md", INTEGRATION / "strings.json"):
+        text = path.read_text(encoding="utf-8").casefold()
+        for phrase in forbidden_docs:
+            if phrase in text:
+                fail(f"obsolete disable-2FA workaround found in {path.relative_to(ROOT)}")
+
     print("Repository structure: OK")
     print("JSON files: OK")
     print("Core platform delegation: OK")
     print("VeSync domain/config-entry invariants: OK")
-    print("Session persistence invariants: OK")
+    print("MFA challenge/redaction invariants: OK")
+    print("Session persistence/reauth invariants: OK")
 
 
 if __name__ == "__main__":
