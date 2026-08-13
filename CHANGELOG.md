@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+Field-test findings after the 0.3.0 isolation redesign.
+
+- Confirmed a real VeSync MFA challenge with 2FA left enabled.
+- Confirmed server code `-11257129` and advertised MFA methods `email`, `otp` and
+  `backupCode`.
+- Confirmed the challenge supplies a `bizToken` but no usable `authorizeCode`,
+  which establishes that the second factor must be verified before the normal
+  authorization-code exchange can continue.
+- Added the sanitized live challenge shape to runtime tests so future parser
+  changes are checked against the response actually observed in Home Assistant.
+- Marked first-stage protocol discovery complete in the documentation. The exact
+  second-factor verification endpoint and payload remain deliberately
+  unimplemented until verified from reproducible evidence.
+
 ## 0.3.0 — 2026-08-13
 
 Safety redesign after live testing of the same-domain override.
