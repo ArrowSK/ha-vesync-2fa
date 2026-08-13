@@ -1,8 +1,12 @@
-VeSync 2FA Session Bridge
+VeSync 2FA Probe
 
-This project contains code derived from and designed to override the VeSync
-integration in Home Assistant Core:
-https://github.com/home-assistant/core/tree/dev/homeassistant/components/vesync
+This project is a Home Assistant custom diagnostic integration for investigating
+VeSync account-level two-factor authentication. Version 0.3.0 uses its own
+`vesync_2fa_probe` domain and does not override Home Assistant Core's built-in
+`vesync` integration.
+
+The project is designed for use with Home Assistant Core:
+https://github.com/home-assistant/core
 
 Home Assistant Core is Copyright (c) Home Assistant contributors and is licensed
 under the Apache License, Version 2.0.
