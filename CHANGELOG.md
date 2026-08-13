@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 — 2026-08-13
+
+Single-pass MFA discovery after the 0.6 multi-step form failed in a real Home Assistant frontend.
+
+- Removes the separate `async_step_otp` flow that produced `extra keys not allowed` errors when Home Assistant submitted the original credential fields against the OTP-only schema.
+- Replaces it with one form containing email, password, authenticator code, country code and API region.
+- Runs the verified first-stage password authentication and, on the known MFA challenge, automatically tests up to 15 bounded OTP payload hypotheses in the same request flow.
+- Restricts live protocol guesses to the two VeSync authentication endpoints already used by current open-source clients.
+- Covers common OTP field names, a few method-name/nested-object variants, and two candidates on the known authorize-code login endpoint.
+- If any candidate returns an `authorizeCode`, automatically performs the normal `loginByAuthorizeCode4Vesync` exchange in memory to check whether a session token is issued.
+- Stops on success, rate limiting, account lock, or explicit invalid/expired-code responses.
+- Keeps passwords, OTPs, account IDs, `bizToken`, authorization codes, session tokens and raw responses out of logs, config entries and safe output.
+- Keeps the diagnostic `vesync_2fa_probe` domain isolated from Home Assistant Core's existing `vesync` integration.
+
 ## 0.6.0 — 2026-08-13
 
 One-code bounded MFA discovery after the C2–C6 batch results.
