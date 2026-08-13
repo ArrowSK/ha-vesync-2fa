@@ -87,6 +87,30 @@ outcome=mfa_required; server_code=-12345; methods=TOTP,EMAIL; biz_token=yes; ver
 No password, email address, account ID, authorization code, cloud token or
 `bizToken` value is included in that line.
 
+## Confirmed live MFA challenge
+
+The first isolated field test succeeded on 13 August 2026 with account-level 2FA
+left enabled. VeSync returned:
+
+```text
+outcome=mfa_required; server_code=-11257129; methods=email,otp,backupCode; biz_token=yes; verify_email=no; authorize_code=no; result_keys=accountID,accountLockTimeInSec,authorizeCode,avatarIcon,bizToken,emailUpdateToSame,mailConfirmation,mfaMethodList,nickName,registerAppVersion,registerSourceDetail,registerTime,userType,verifyEmail
+```
+
+This is useful because it removes several assumptions from the investigation.
+The live account advertises three second-factor choices: `email`, `otp` and
+`backupCode`. A `bizToken` challenge value is returned, while `authorizeCode` is
+not. In other words, VeSync is gating the normal authorization-code exchange
+behind a separate MFA verification step.
+
+`verify_email=no` in the safe line means the `verifyEmail` field was empty in this
+response. It does **not** mean that email MFA is unavailable; `email` is explicitly
+present in `mfaMethodList`.
+
+The exact endpoint and payload that consume the `bizToken` plus the selected
+second factor are still unknown. The project will not guess them. The confirmed
+challenge shape has been added to the runtime tests so later parser changes cannot
+silently break the real response we observed.
+
 ## Installation
 
 If you previously installed version 0.1.0 or 0.2.0, remove that HACS integration
@@ -108,19 +132,14 @@ config entry.
 
 ## Running the first field test
 
-Keep VeSync 2FA enabled.
+The first field test is now complete. Its sanitized result is documented above
+and in issue #1. Repeating the same password-stage probe is not normally useful
+unless we are comparing another account, region or future VeSync API change.
 
-Enter the VeSync account email and password in the probe, together with the
-account country code and the appropriate API region. For a Hungarian account, for
-example, the country code is `HU` and the API region is `EU`.
-
-The result screen will show a human-readable outcome and one line labelled as safe
-metadata. Copy only that safe metadata line into project issue #1.
-
-Do not post the raw VeSync response. Do not post screenshots containing the
-account email address. Do not post passwords, one-time codes, account IDs,
-authorization codes, cloud tokens, `bizToken` values, device CIDs or MAC
-addresses.
+Keep VeSync 2FA enabled. Do not post the raw VeSync response. Do not post
+screenshots containing the account email address. Do not post passwords, one-time
+codes, account IDs, authorization codes, cloud tokens, `bizToken` values, device
+CIDs or MAC addresses.
 
 ## What happens to the normal VeSync integration
 
@@ -182,15 +201,16 @@ Every change on `main` runs:
   `pyvesync` 3.4.2.
 
 The tests verify the isolation boundary, request-model behaviour, MFA response
-classification and redaction. They do not pretend to reproduce VeSync's private
-server-side MFA flow.
+classification, the confirmed live challenge shape and redaction. They do not
+pretend to reproduce VeSync's private server-side MFA flow.
 
 ## Roadmap
 
 The work is intentionally split into stages:
 
-1. Safely capture the real first-stage MFA challenge shape.
-2. Identify the actual second-factor request from reproducible evidence.
+1. **Complete:** safely capture the real first-stage MFA challenge shape.
+2. **In progress:** identify the actual second-factor request from reproducible
+   evidence.
 3. Implement that request in a testable authentication layer.
 4. Prove token persistence and later reauthentication with 2FA still enabled.
 5. Add regression tests for existing VeSync config entries and entity IDs.
@@ -202,12 +222,10 @@ asks for it, not every time Home Assistant restarts.
 
 ## Reporting results and bugs
 
-For the protocol test, issue #1 is the right place. Paste only the safe metadata
-line produced by the probe.
-
-For bugs, include the Home Assistant version, probe version, selected API region,
-account country code, and a sanitized traceback if one exists. Do not include
-credentials or raw VeSync payloads.
+Issue #1 tracks the protocol investigation and contains the first confirmed live
+challenge. For bugs, include the Home Assistant version, probe version, selected
+API region, account country code, and a sanitized traceback if one exists. Do not
+include credentials or raw VeSync payloads.
 
 ## Upstream work and attribution
 
