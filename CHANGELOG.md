@@ -1,20 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-08-13
 
-Field-test findings after the 0.3.0 isolation redesign.
+Controlled continuation testing after the first real MFA challenge was captured.
 
-- Confirmed a real VeSync MFA challenge with 2FA left enabled.
-- Confirmed server code `-11257129` and advertised MFA methods `email`, `otp` and
-  `backupCode`.
-- Confirmed the challenge supplies a `bizToken` but no usable `authorizeCode`,
-  which establishes that the second factor must be verified before the normal
-  authorization-code exchange can continue.
-- Added the sanitized live challenge shape to runtime tests so future parser
-  changes are checked against the response actually observed in Home Assistant.
-- Marked first-stage protocol discovery complete in the documentation. The exact
-  second-factor verification endpoint and payload remain deliberately
-  unimplemented until verified from reproducible evidence.
+- Confirms a live VeSync MFA challenge with 2FA left enabled, server code
+  `-11257129`, methods `email`, `otp` and `backupCode`, a `bizToken`, and no usable
+  `authorizeCode`.
+- Changes the protocol-discovery strategy from "wait for a published endpoint" to
+  one small hypothesis at a time.
+- Adds hypothesis C1: reuse the already-known `authByPWDOrOTM` endpoint with the
+  issued `bizToken` and `mfaMethod=otp`.
+- C1 deliberately omits any OTP/code value. Its purpose is to learn whether the
+  known endpoint accepts MFA continuation and whether the server reports a useful
+  missing-field/error class.
+- Keeps challenge secrets in the live config-flow object only. The password hash
+  is removed before the continuation request is built; nothing is persisted or
+  logged.
+- Reduces the C1 response to public-safe metadata: HTTP status, server code,
+  message category, presence of an authorization code, and result field names.
+- Does not create a Home Assistant config entry, override the built-in `vesync`
+  integration, submit a second factor, or exchange an authorization code.
+- Adds a dedicated 0.4 repository validation job while retaining Home Assistant,
+  HACS and runtime compatibility checks.
+
+If C1 is rejected, the next version will test the next narrow route/payload
+hypothesis. Real one-time codes will not be tried repeatedly or brute-forced.
 
 ## 0.3.0 — 2026-08-13
 
