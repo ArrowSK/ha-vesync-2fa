@@ -1,4 +1,4 @@
-"""Constants for the VeSync session bridge."""
+"""Constants for the VeSync MFA-aware override."""
 
 from homeassistant.components.vesync.const import DOMAIN
 
