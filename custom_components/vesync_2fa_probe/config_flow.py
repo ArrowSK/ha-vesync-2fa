@@ -46,9 +46,9 @@ def _serializable_schema(
 
 
 # Home Assistant serializes config-flow schemas before sending them to the
-# frontend. voluptuous-serialize does not support vol.Match, which was used by
-# 0.7.0 for the OTP field and caused the generic HTTP 500 before the form could
-# be displayed. Patch only the schema builder; authentication behavior is
+# frontend. The regex validator used by 0.7.0 is not supported by
+# voluptuous-serialize and caused the generic HTTP 500 before the form could be
+# displayed. Patch only the schema builder; authentication behavior is
 # otherwise unchanged from the tested 0.7 implementation.
 VeSync2FAProbeConfigFlow._schema = _serializable_schema
 
