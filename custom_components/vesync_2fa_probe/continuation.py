@@ -90,11 +90,8 @@ def _safe_result(payload: dict[str, Any], http_status: int) -> ContinuationProbe
     )
 
 
-async def async_probe_same_endpoint_continuation(
-    session: ClientSession,
-    context: ChallengeContext,
-) -> ContinuationProbeResult:
-    """Test one no-code continuation hypothesis against the known auth endpoint."""
+def build_no_code_continuation_payload(context: ChallengeContext) -> dict[str, Any]:
+    """Build hypothesis C1 without a password hash or one-time code."""
     payload = dict(context.common_payload)
     payload.pop("password", None)
     payload["method"] = "authByPWDOrOTM"
@@ -102,6 +99,15 @@ async def async_probe_same_endpoint_continuation(
     payload["mfaMethod"] = "otp"
     if context.account_id:
         payload["accountID"] = context.account_id
+    return payload
+
+
+async def async_probe_same_endpoint_continuation(
+    session: ClientSession,
+    context: ChallengeContext,
+) -> ContinuationProbeResult:
+    """Test one no-code continuation hypothesis against the known auth endpoint."""
+    payload = build_no_code_continuation_payload(context)
 
     try:
         async with session.post(
