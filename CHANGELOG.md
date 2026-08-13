@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — 2026-08-13
+
+One-code bounded MFA discovery after the C2–C6 batch results.
+
+- Records the observed 0.5.0 batch behavior: C2, C3 and C4 repeated the same `-11257129` MFA challenge, while C5/C6 returned `-11102086` with no result fields.
+- Adds C7/C8 no-code preflight requests against VeSync's already-known `loginByAuthorizeCode4Vesync` endpoint.
+- Adds one local Home Assistant authenticator-code step only when VeSync advertises the `otp` method.
+- Uses that single fresh code in a bounded D1–D6 field-name ladder on the verified password-auth endpoint, then E1–E3 variants on the known login endpoint only if the first ladder is completely ignored.
+- Stops immediately on authorization/session success, rate limiting, account lock, explicit invalid/expired-code responses, or the first materially different protocol response.
+- Does not persist or display plaintext passwords, password hashes, authenticator codes, account IDs, challenge tokens, authorization codes, session tokens, or raw API responses.
+- Keeps the diagnostic `vesync_2fa_probe` domain isolated from Home Assistant Core's working `vesync` integration.
+
 ## 0.5.0 — 2026-08-13
 
 Batch continuation discovery after the first live C1 result.
