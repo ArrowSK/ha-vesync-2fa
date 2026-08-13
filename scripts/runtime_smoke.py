@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 MODULES = (
     "custom_components.vesync",
+    "custom_components.vesync.auth",
     "custom_components.vesync.config_flow",
     "custom_components.vesync.coordinator",
     "custom_components.vesync.session",
@@ -35,10 +36,15 @@ MODULES = (
 
 
 def main() -> None:
-    """Import every module and verify the pyvesync session round trip."""
+    """Import every module and verify authentication/session invariants."""
     for module in MODULES:
         importlib.import_module(module)
 
+    from custom_components.vesync.auth import (
+        VeSyncAuthorizationCode,
+        VeSyncMFAChallenge,
+        parse_auth_response,
+    )
     from custom_components.vesync.session import restore_session, session_data
 
     source = VeSync("nobody@example.invalid", "not-a-real-password")
@@ -65,8 +71,68 @@ def main() -> None:
     assert restored.current_region == "EU"
     assert restored.enabled is True
 
+    normal = parse_auth_response(
+        {
+            "code": 0,
+            "msg": "request success",
+            "result": {
+                "accountID": "private-account-id",
+                "verifyEmail": "private@example.invalid",
+                "bizToken": None,
+                "mfaMethodList": None,
+                "authorizeCode": "private-authorization-code",
+            },
+        }
+    )
+    assert isinstance(normal, VeSyncAuthorizationCode)
+    assert normal.authorization_code == "private-authorization-code"
+
+    mfa = parse_auth_response(
+        {
+            "code": -1,
+            "msg": "user login requires 2fa authentication",
+            "result": {
+                "accountID": "private-account-id",
+                "verifyEmail": "private@example.invalid",
+                "bizToken": "private-mfa-challenge-token",
+                "mfaMethodList": ["TOTP", "EMAIL"],
+                "authorizeCode": "",
+            },
+        }
+    )
+    assert isinstance(mfa, VeSyncMFAChallenge)
+    assert mfa.methods == ("TOTP", "EMAIL")
+    safe = mfa.safe_summary
+    assert "TOTP,EMAIL" in safe
+    assert "biz_token=yes" in safe
+    assert "verify_email=yes" in safe
+    for secret in (
+        "private-account-id",
+        "private@example.invalid",
+        "private-mfa-challenge-token",
+    ):
+        assert secret not in safe
+        assert secret not in repr(mfa)
+
+    # Some APIs return a successful status together with challenge metadata.
+    # Challenge fields must take precedence over an authorization code so MFA can
+    # never be silently bypassed by the parser.
+    challenge_with_success_code = parse_auth_response(
+        {
+            "code": 0,
+            "msg": "request success",
+            "result": {
+                "bizToken": "another-private-token",
+                "mfaMethodList": ["TOTP"],
+                "authorizeCode": "must-not-be-used",
+            },
+        }
+    )
+    assert isinstance(challenge_with_success_code, VeSyncMFAChallenge)
+
     print("Home Assistant module imports: OK")
     print("pyvesync session save/restore round trip: OK")
+    print("VeSync MFA challenge parsing/redaction: OK")
 
 
 if __name__ == "__main__":
