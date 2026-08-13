@@ -1,0 +1,32 @@
+{
+  "config": {
+    "abort": {
+      "probe_complete": "Probe finished. {outcome}. Safe metadata: {details}. No VeSync configuration entry was created or changed."
+    },
+    "error": {
+      "cannot_connect": "The probe could not obtain a usable response from VeSync. Check the account details, country/API region and network connection, then try again."
+    },
+    "step": {
+      "result": {
+        "description": "{outcome}.\n\nSafe metadata: `{details}`\n\nThis line is designed to be safe to paste into the project issue. Do not post screenshots that contain your email address or any raw VeSync response.",
+        "title": "VeSync authentication probe result"
+      },
+      "user": {
+        "data": {
+          "api_region": "VeSync API region",
+          "country_code": "Account country code",
+          "password": "Password",
+          "username": "Email"
+        },
+        "data_description": {
+          "api_region": "Use EU for accounts handled by the European VeSync service. Use GLOBAL for the US and other non-EU regions.",
+          "country_code": "Two-letter ISO country code for the VeSync account, for example HU, DE, GB or US.",
+          "password": "Used only for this one first-stage VeSync sign-in request. It is not stored by the probe.",
+          "username": "Email address used by the VeSync account. It is not stored by the probe."
+        },
+        "description": "This diagnostic tool runs beside Home Assistant's built-in VeSync integration. It sends one first-stage VeSync sign-in request, records only sanitized MFA metadata, and stops. It does not create entities, replace the built-in VeSync integration, exchange an authorization code for a session, or submit a one-time code.",
+        "title": "Probe VeSync 2FA authentication"
+      }
+    }
+  }
+}
