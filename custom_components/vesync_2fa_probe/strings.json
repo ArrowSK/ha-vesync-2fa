@@ -1,42 +1,33 @@
 {
   "config": {
     "abort": {
-      "probe_complete": "Probe finished. {outcome}. Safe metadata: {details}. No VeSync configuration entry was created or changed.",
-      "probe_state_lost": "The temporary MFA probe state was lost. Start VeSync 2FA Probe again. No VeSync configuration entry was changed."
+      "probe_complete": "Probe finished. {outcome}. Safe metadata: {details}. No VeSync configuration entry was created or changed."
     },
     "error": {
       "cannot_connect": "The probe could not obtain a usable response from VeSync. Check the account details, country/API region and network connection, then try again."
     },
     "step": {
-      "otp": {
-        "data": {
-          "otp_code": "Current authenticator code"
-        },
-        "data_description": {
-          "otp_code": "Enter the current numeric code for the VeSync MFA method advertised as otp. The code is sent only to VeSync during this one diagnostic flow, is never stored, and is discarded immediately after the bounded test finishes."
-        },
-        "description": "VeSync accepted your password and returned an MFA challenge. The probe has already run two no-code checks automatically. Enter one fresh authenticator code now; the probe will try a short, bounded set of plausible code field names against VeSync's two already-known authentication endpoints. It stops immediately on success, rate limiting, account lock, an invalid/expired-code response, or any new protocol signal. Submit promptly because authenticator codes expire quickly.",
-        "title": "Test one VeSync authenticator code"
-      },
       "result": {
-        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe output can contain up to three sanitized lines: the original MFA challenge, the no-code preflight against VeSync's known login endpoint, and the one-code hypothesis ladder. Secret values, including the authenticator code, password, account ID, bizToken, authorizeCode and session token, are never included. Copy only these safe metadata lines; do not post screenshots containing your email address or any raw VeSync response.",
+        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe output contains only sanitized protocol metadata. Passwords, authenticator codes, account IDs, bizToken values, authorizeCode values, session tokens and raw VeSync responses are never included. Copy only these safe metadata lines.",
         "title": "VeSync authentication probe result"
       },
       "user": {
         "data": {
           "api_region": "VeSync API region",
           "country_code": "Account country code",
+          "otp_code": "Current authenticator code",
           "password": "Password",
           "username": "Email"
         },
         "data_description": {
           "api_region": "Use EU for accounts handled by the European VeSync service. Use GLOBAL for the US and other non-EU regions.",
           "country_code": "Two-letter ISO country code for the VeSync account, for example HU, DE, GB or US.",
-          "password": "Used only inside this diagnostic flow. Plaintext is not stored by the probe.",
+          "otp_code": "Enter a fresh current numeric code from your authenticator app immediately before submitting. It is used only during this one run and is never stored.",
+          "password": "Used only inside this diagnostic run. Plaintext is not stored by the probe.",
           "username": "Email address used by the VeSync account. It is not stored by the probe."
         },
-        "description": "This diagnostic tool runs beside Home Assistant's built-in VeSync integration. It performs the verified first-stage sign-in request. For an MFA challenge advertising otp, it automatically performs two no-code checks and then asks for one fresh authenticator code locally in Home Assistant. That single code is used by a bounded continuation ladder so several protocol guesses can be tested in one run without repeatedly asking you to work through separate experiments. The probe never creates entities or changes the built-in VeSync integration.",
-        "title": "Probe VeSync 2FA authentication"
+        "description": "Version 0.7 uses a single form to avoid the multi-step form error seen in 0.6. Enter all five values once. After VeSync returns the MFA challenge, the probe automatically tries up to 15 bounded OTP request shapes using only VeSync's two already-known authentication endpoints. It stops immediately on success, rate limiting, account lock, or an explicit invalid/expired-code response. The built-in VeSync integration is not changed.",
+        "title": "Run VeSync 2FA single-pass probe"
       }
     }
   }
