@@ -1,4 +1,4 @@
-"""VeSync coordinator with session persistence."""
+"""VeSync coordinator with session persistence and authentication recovery."""
 
 from typing import override
 
@@ -8,6 +8,7 @@ from homeassistant.components.vesync.coordinator import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import DOMAIN
 from .session import merged_with_session
@@ -18,18 +19,25 @@ class VeSyncDataCoordinator(CoreVeSyncDataCoordinator):
 
     @override
     async def _async_update_data(self) -> None:
-        await super()._async_update_data()
+        try:
+            await super()._async_update_data()
+        except UpdateFailed as err:
+            # pyvesync automatically attempts password reauthentication when a
+            # token is rejected. With account-level MFA that password-only retry
+            # cannot complete. If pyvesync has already marked the manager
+            # unauthenticated, turn the polling failure into Home Assistant's
+            # interactive reauthentication flow instead of leaving stale data.
+            if not self.manager.enabled:
+                raise ConfigEntryAuthFailed(
+                    translation_domain=DOMAIN, translation_key="mfa_required"
+                ) from err
+            raise
 
-        # pyvesync marks the manager disabled when a token is rejected and its
-        # automatic password reauthentication cannot recover. The Core
-        # coordinator turns device-level VeSync errors into update failures (and
-        # pyvesync may log/suppress them inside concurrent device updates), so
-        # explicitly surface the resulting authentication state to Home
-        # Assistant. This makes a revoked saved session become a normal reauth
-        # flow instead of leaving the integration silently stale.
+        # Device update tasks inside pyvesync can log/suppress their own VeSync
+        # errors. Check the final manager state even when Core did not raise.
         if not self.manager.enabled:
             raise ConfigEntryAuthFailed(
-                translation_domain=DOMAIN, translation_key="invalid_auth"
+                translation_domain=DOMAIN, translation_key="mfa_required"
             )
 
         data = merged_with_session(self.config_entry.data, self.manager)
