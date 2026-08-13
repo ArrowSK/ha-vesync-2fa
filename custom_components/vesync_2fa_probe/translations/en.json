@@ -8,7 +8,7 @@
     },
     "step": {
       "result": {
-        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe second line, when present, is hypothesis C1: the probe reused VeSync's known password-auth endpoint with the issued MFA challenge token and the advertised `otp` method, but sent no one-time code. Both lines are designed to be safe to paste into the project issue. Do not post screenshots containing your email address or any raw VeSync response.",
+        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe first line is the normal sanitized MFA challenge. The second line, when present, contains several bounded continuation hypotheses tested automatically in the same run. No OTP, email code or backup code was submitted. Copy only these safe metadata lines; do not post screenshots containing your email address or any raw VeSync response.",
         "title": "VeSync authentication probe result"
       },
       "user": {
@@ -21,10 +21,10 @@
         "data_description": {
           "api_region": "Use EU for accounts handled by the European VeSync service. Use GLOBAL for the US and other non-EU regions.",
           "country_code": "Two-letter ISO country code for the VeSync account, for example HU, DE, GB or US.",
-          "password": "Used for the verified first-stage VeSync sign-in request only. It is not stored by the probe.",
+          "password": "Used only inside this one diagnostic run. It is not stored by the probe.",
           "username": "Email address used by the VeSync account. It is not stored by the probe."
         },
-        "description": "This diagnostic tool runs beside Home Assistant's built-in VeSync integration. It performs the verified first-stage sign-in request. If VeSync returns an MFA challenge that advertises `otp`, the probe then tests one conservative continuation hypothesis against the same known endpoint without sending an OTP. It does not create entities, replace the built-in VeSync integration, exchange an authorization code for a session, or submit a one-time code.",
+        "description": "This diagnostic tool runs beside Home Assistant's built-in VeSync integration. It performs the verified first-stage sign-in request. If VeSync returns an MFA challenge that advertises otp, the probe then tests a small no-code continuation ladder automatically in the same run. The ladder varies one request shape at a time, never submits a second-factor code, stops on rate limiting/account lock, and never creates entities or changes the built-in VeSync integration.",
         "title": "Probe VeSync 2FA authentication"
       }
     }
