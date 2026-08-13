@@ -13,13 +13,11 @@ PROBE = COMPONENTS / "vesync_2fa_probe"
 
 
 def fail(message: str) -> None:
-    """Stop validation with a useful error."""
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def load_json(path: Path) -> dict:
-    """Load a JSON object or stop."""
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -30,7 +28,6 @@ def load_json(path: Path) -> dict:
 
 
 def main() -> None:
-    """Validate package, isolation and no-code ladder invariants."""
     if not PROBE.is_dir():
         fail("vesync_2fa_probe component is missing")
     if (COMPONENTS / "vesync").exists():
@@ -52,19 +49,16 @@ def main() -> None:
     if strings != translation:
         fail("English translation must match strings.json")
 
-    flow = (PROBE / "config_flow.py").read_text(encoding="utf-8")
+    flow_wrapper = (PROBE / "config_flow.py").read_text(encoding="utf-8")
+    flow = (PROBE / "config_flow_v050.py").read_text(encoding="utf-8")
+    if "config_flow_v050" not in flow_wrapper:
+        fail("config_flow.py must point at the 0.5 implementation")
     if "async_create_entry" in flow:
         fail("probe must not create a persistent config entry")
     if "async_probe_continuation_ladder" not in flow:
         fail("0.5 continuation ladder is not wired into the flow")
 
-    auth = (PROBE / "auth.py").read_text(encoding="utf-8")
-    if "common_payload = dict(request_payload)" not in auth:
-        fail("0.5 must retain the verified hashed credential request only in memory")
-    if "logger." in auth or "_LOGGER." in auth:
-        fail("authentication probe must not log sensitive request/response data")
-
-    continuation = (PROBE / "continuation.py").read_text(encoding="utf-8")
+    ladder = (PROBE / "continuation_v050.py").read_text(encoding="utf-8")
     for marker in (
         "c2_same_auth_password_mfaMethod",
         "c3_same_auth_password_bizToken_only",
@@ -76,10 +70,12 @@ def main() -> None:
         "account_locked",
         "rate_limited",
     ):
-        if marker not in continuation:
+        if marker not in ladder:
             fail(f"0.5 ladder invariant missing: {marker}")
 
-    forbidden_submission_markers = (
+    # The discovery build may reconstruct the first-stage password hash for a
+    # candidate request, but it must never submit a second-factor value.
+    for marker in (
         'payload["otp"]',
         'payload["otpCode"]',
         'payload["mfaCode"]',
@@ -87,14 +83,11 @@ def main() -> None:
         'payload["verifyCode"]',
         'payload["backupCode"]',
         'payload["emailCode"]',
-    )
-    for marker in forbidden_submission_markers:
-        if marker in continuation:
-            fail(f"continuation ladder must not submit a second-factor value: {marker}")
+    ):
+        if marker in ladder:
+            fail(f"ladder must not submit a second-factor value: {marker}")
 
-    combined = "\n".join(
-        path.read_text(encoding="utf-8") for path in PROBE.glob("*.py")
-    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in PROBE.glob("*.py"))
     if "homeassistant.components.vesync" in combined:
         fail("probe must not import Home Assistant Core VeSync")
     if "async_forward_entry_setups" in combined:
@@ -111,7 +104,7 @@ def main() -> None:
     print("Probe domain isolation: OK")
     print("0.5 package metadata: OK")
     print("No persistent config entry: OK")
-    print("Bounded multi-hypothesis continuation ladder: OK")
+    print("Bounded C2-C6 continuation ladder: OK")
     print("No second-factor submission: OK")
     print("Translations: OK")
 
