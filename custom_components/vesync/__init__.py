@@ -1,8 +1,8 @@
-"""VeSync integration override with persistent authenticated sessions.
+"""VeSync integration override with MFA-aware authentication.
 
 This custom integration deliberately stays close to Home Assistant's built-in
-VeSync integration. Device/entity implementations remain upstream; only session
-handling around authentication is changed.
+VeSync integration. Device/entity implementations remain upstream; authentication
+and reusable-session handling are the only overridden layers.
 """
 
 import logging
@@ -28,6 +28,7 @@ from pyvesync.utils.errors import (
     VeSyncTokenError,
 )
 
+from .auth import VeSyncMFARequired, async_authenticate
 from .const import DOMAIN
 from .coordinator import VesyncConfigEntry, VeSyncDataCoordinator
 from .session import merged_with_session, restore_session
@@ -60,9 +61,16 @@ async def async_setup_entry(
 
     try:
         if not used_saved_session:
-            await manager.login()
+            await async_authenticate(manager)
         await manager.update()
         await manager.check_firmware()
+    except VeSyncMFARequired as err:
+        # A background setup cannot collect an MFA code. Route the entry into
+        # Home Assistant's reauthentication flow, where the interactive config
+        # flow can expose the sanitized challenge metadata.
+        raise ConfigEntryAuthFailed(
+            translation_domain=DOMAIN, translation_key="mfa_required"
+        ) from err
     except (VeSyncLoginError, VeSyncTokenError) as err:
         raise ConfigEntryAuthFailed(
             translation_domain=DOMAIN, translation_key="invalid_auth"
