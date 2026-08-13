@@ -10,7 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
 
-from .auth import ProbeResult, VeSyncProbeError, async_probe_auth
+from .auth import ProbeResult, VeSyncProbeError, async_probe_auth_with_context
 from .const import (
     API_REGION_EU,
     API_REGION_GLOBAL,
@@ -19,10 +19,13 @@ from .const import (
     DOMAIN,
     EU_COUNTRY_CODES,
 )
+from .continuation import async_probe_same_endpoint_continuation
 
 
-def _friendly_outcome(result: ProbeResult) -> str:
+def _friendly_outcome(result: ProbeResult, continuation_ran: bool) -> str:
     """Return a concise human-readable probe outcome."""
+    if result.outcome == "mfa_required" and continuation_ran:
+        return "VeSync returned an MFA challenge and continuation hypothesis C1 was tested"
     if result.outcome == "mfa_required":
         return "VeSync returned an MFA challenge"
     if result.outcome == "password_accepted":
@@ -31,7 +34,7 @@ def _friendly_outcome(result: ProbeResult) -> str:
 
 
 class VeSync2FAProbeConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Run a one-shot VeSync MFA protocol probe without creating a config entry."""
+    """Run bounded VeSync MFA protocol discovery without creating a config entry."""
 
     VERSION = 1
 
@@ -74,7 +77,7 @@ class VeSync2FAProbeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Send exactly one first-stage VeSync authentication request."""
+        """Run first-stage auth and the first conservative continuation hypothesis."""
         if user_input is None:
             return self.async_show_form(
                 step_id="user",
@@ -86,10 +89,11 @@ class VeSync2FAProbeConfigFlow(ConfigFlow, domain=DOMAIN):
         password = user_input[CONF_PASSWORD]
         country_code = user_input[CONF_COUNTRY_CODE]
         api_region = user_input[CONF_API_REGION]
+        session = async_get_clientsession(self.hass)
 
         try:
-            result = await async_probe_auth(
-                async_get_clientsession(self.hass),
+            exchange = await async_probe_auth_with_context(
+                session,
                 username=username,
                 password=password,
                 country_code=country_code,
@@ -103,10 +107,27 @@ class VeSync2FAProbeConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors={"base": "cannot_connect"},
             )
 
-        # Retain only the already-sanitized summary. Credentials and the raw
-        # VeSync response are never written to a Home Assistant config entry.
-        self._safe_summary = result.safe_summary
-        self._outcome = _friendly_outcome(result)
+        result = exchange.result
+        safe_lines = [result.safe_summary]
+        continuation_ran = False
+
+        advertised_methods = {method.casefold() for method in result.methods}
+        if (
+            result.outcome == "mfa_required"
+            and exchange.challenge is not None
+            and "otp" in advertised_methods
+        ):
+            continuation = await async_probe_same_endpoint_continuation(
+                session, exchange.challenge
+            )
+            safe_lines.append(continuation.safe_summary)
+            continuation_ran = True
+
+        # Only already-sanitized summaries survive beyond this point. Password,
+        # email, account ID and bizToken values remain flow-local and disappear
+        # when the config flow ends.
+        self._safe_summary = "\n".join(safe_lines)
+        self._outcome = _friendly_outcome(result, continuation_ran)
         return await self.async_step_result()
 
     async def async_step_result(
