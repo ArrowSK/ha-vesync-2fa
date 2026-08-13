@@ -24,8 +24,11 @@ This override changes only the authentication/session layer:
 - on the next Home Assistant restart, those values are restored into `pyvesync`
   instead of forcing another password login;
 - the normal Home Assistant Core VeSync entity platforms are used unchanged;
-- if VeSync invalidates the saved session, Home Assistant requests
-  reauthentication instead of silently pretending the integration is healthy.
+- if VeSync invalidates the saved session, the next integration setup or reload
+  cannot reuse it and Home Assistant will require authentication again. Normal
+  device polling still follows `pyvesync`'s own error handling, so a revoked
+  token may first show up as stale or failed device updates rather than an
+  immediate reauthentication prompt.
 
 Everything that creates fans, sensors, switches, numbers, selects, lights,
 humidifiers and update entities is still Home Assistant Core's VeSync code.
@@ -145,8 +148,9 @@ installed Home Assistant version rather than copying thousands of lines that
 would immediately start drifting upstream.
 
 A future Home Assistant release can still change internal VeSync interfaces. The
-repository therefore runs HACS validation, Hassfest and its own structural checks
-on every change. Updates should be tested before installing them on a production
+repository therefore runs HACS validation, Hassfest, structural checks and a
+runtime import/session smoke test against Home Assistant 2026.8.0 on every
+change. Updates should still be tested before installing them on a production
 Home Assistant instance.
 
 ## Why the repository uses the same `vesync` domain
@@ -173,7 +177,9 @@ integration loads, and re-enable 2FA immediately.
 
 That is the main remaining upstream limitation. Repeat the bootstrap. A native OTP
 flow cannot be added safely until the VeSync challenge protocol is known or
-`pyvesync` exposes it.
+`pyvesync` exposes it. If controls stop updating before Home Assistant asks for
+reauthentication, reload the VeSync integration; that forces setup to validate
+the saved session again.
 
 ### Entities appeared with `_2`
 
@@ -214,11 +220,14 @@ python scripts/validate.py
 python -m compileall -q custom_components scripts
 ```
 
-GitHub Actions also run:
+The GitHub Actions suite also runs:
 
-- repository-specific structural validation;
+- repository-specific structural validation and Python compilation;
 - Home Assistant Hassfest;
-- HACS repository validation.
+- HACS repository validation;
+- a runtime smoke test that installs Home Assistant 2026.8.0 and `pyvesync`
+  3.4.2, imports every custom-component module and verifies the saved-session
+  round trip.
 
 The repository intentionally contains one Home Assistant integration only:
 `custom_components/vesync`.
