@@ -111,7 +111,9 @@ def main() -> None:
     for marker in (
         "restore_session(manager, config_entry.data)",
         "merged_with_session(config_entry.data, manager)",
-        "async_authenticate(manager)",
+        "async_authenticate(",
+        "username=username",
+        "password=password",
         "async_forward_entry_setups(config_entry, PLATFORMS)",
         "_core_async_migrate_entry",
     ):
