@@ -1,9 +1,10 @@
 """Helpers for persisting a VeSync authenticated session.
 
-VeSync currently blocks password login when account-level 2FA is enabled, while
-pyvesync does not yet expose the interactive OTP challenge. A successful VeSync
-login does, however, return a reusable authenticated session. This module stores
-that session in the Home Assistant config entry and restores it on restart.
+A completed VeSync authentication returns a reusable cloud session. Persisting it
+avoids repeating MFA on every Home Assistant restart. If VeSync later expires or
+revokes the session, the coordinator routes the integration back into Home
+Assistant reauthentication instead of relying on a password-only background
+login.
 """
 
 from collections.abc import Mapping
@@ -53,7 +54,10 @@ def session_data(manager: VeSync) -> dict[str, str]:
     country_code = credentials.get("country_code")
     region = credentials.get("current_region")
 
-    if not all(isinstance(value, str) and value for value in (token, account_id, country_code, region)):
+    if not all(
+        isinstance(value, str) and value
+        for value in (token, account_id, country_code, region)
+    ):
         return {}
 
     return {
