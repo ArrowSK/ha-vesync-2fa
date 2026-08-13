@@ -85,7 +85,9 @@ class VeSyncMFARequired(VeSyncLoginError):
         self.challenge = challenge
 
 
-def parse_auth_response(response: dict[str, Any]) -> VeSyncAuthorizationCode | VeSyncMFAChallenge:
+def parse_auth_response(
+    response: dict[str, Any],
+) -> VeSyncAuthorizationCode | VeSyncMFAChallenge:
     """Parse the first VeSync authentication response without leaking secrets."""
     raw_code = response.get("code")
     server_code = raw_code if isinstance(raw_code, int) else None
@@ -94,7 +96,11 @@ def parse_auth_response(response: dict[str, Any]) -> VeSyncAuthorizationCode | V
 
     methods = _safe_method_list(result_dict.get("mfaMethodList"))
     biz_token_value = result_dict.get("bizToken")
-    biz_token = biz_token_value if isinstance(biz_token_value, str) and biz_token_value else None
+    biz_token = (
+        biz_token_value
+        if isinstance(biz_token_value, str) and biz_token_value
+        else None
+    )
     verify_email_value = result_dict.get("verifyEmail")
     verify_email = (
         verify_email_value
@@ -115,7 +121,11 @@ def parse_auth_response(response: dict[str, Any]) -> VeSyncAuthorizationCode | V
         )
 
     authorization_code = result_dict.get("authorizeCode")
-    if server_code == 0 and isinstance(authorization_code, str) and authorization_code:
+    if (
+        server_code == 0
+        and isinstance(authorization_code, str)
+        and authorization_code
+    ):
         return VeSyncAuthorizationCode(authorization_code=authorization_code)
 
     message = response.get("msg")
@@ -124,12 +134,14 @@ def parse_auth_response(response: dict[str, Any]) -> VeSyncAuthorizationCode | V
     raise VeSyncLoginError("VeSync authentication failed")
 
 
-async def _first_auth_request(manager: VeSync) -> dict[str, Any]:
+async def _first_auth_request(
+    manager: VeSync, username: str, password: str
+) -> dict[str, Any]:
     """Perform VeSync's known password-authentication request and return raw JSON."""
     request = RequestGetTokenModel(
-        email=manager.username,
+        email=username,
         method="authByPWDOrOTM",
-        password=manager.password,
+        password=password,
     )
 
     session = manager.session
@@ -159,7 +171,7 @@ async def _first_auth_request(manager: VeSync) -> dict[str, Any]:
     return payload
 
 
-async def async_authenticate(manager: VeSync) -> None:
+async def async_authenticate(manager: VeSync, username: str, password: str) -> None:
     """Authenticate a manager while preserving a VeSync MFA challenge.
 
     Normal accounts continue through pyvesync's existing authorization-code
@@ -167,7 +179,9 @@ async def async_authenticate(manager: VeSync) -> None:
     Home Assistant can continue an interactive flow once the OTP protocol is
     verified.
     """
-    parsed = parse_auth_response(await _first_auth_request(manager))
+    parsed = parse_auth_response(
+        await _first_auth_request(manager, username=username, password=password)
+    )
     if isinstance(parsed, VeSyncMFAChallenge):
         raise VeSyncMFARequired(parsed)
 
@@ -175,5 +189,7 @@ async def async_authenticate(manager: VeSync) -> None:
     # including cross-region handling. We intentionally reuse that pinned logic
     # rather than copy it into this integration. This is a private method, so the
     # runtime compatibility test protects us from upstream signature changes.
-    await manager.auth._exchange_authorization_code(parsed.authorization_code)  # noqa: SLF001
+    await manager.auth._exchange_authorization_code(  # noqa: SLF001
+        parsed.authorization_code
+    )
     manager.enabled = True
