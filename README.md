@@ -7,8 +7,16 @@ authentication enabled cannot currently complete a fresh password login through
 
 The integration does **not** pretend that the missing OTP API has been solved.
 Instead, it keeps the authenticated VeSync session obtained from one successful
-login and restores that same session after Home Assistant restarts. That lets you
-turn VeSync 2FA back on and leave it on during normal Home Assistant use.
+login and restores that same session after Home Assistant restarts. The intended
+result is that 2FA can be turned back on after the bootstrap login without Home
+Assistant immediately losing access to the already-authenticated session.
+
+**Status of 0.1.0:** the Home Assistant code path, imports, HACS packaging and
+session save/restore logic are tested automatically against Home Assistant
+2026.8.0 and `pyvesync` 3.4.2. The remaining server-side question — whether VeSync
+continues accepting the saved token after 2FA is re-enabled on a real account —
+cannot be proven in CI without a real VeSync account. Treat 0.1.0 as an initial
+field-test release until that has been confirmed on real hardware.
 
 ## What this changes
 
@@ -50,12 +58,14 @@ bootstrap procedure is:
 2. Complete the VeSync login/reauthentication in Home Assistant once.
 3. Confirm that your devices and entities are back.
 4. Re-enable two-factor authentication in the VeSync app immediately.
-5. If VeSync offers to trust the newly logged-in client/device, accept that for
-   the Home Assistant session.
+5. Restart or reload Home Assistant once and confirm that VeSync still loads from
+   the saved session without asking you to disable 2FA again.
 
-After step 2, this integration stores the authenticated VeSync session and reuses
-it on subsequent Home Assistant restarts. You should not need to repeat the
-bootstrap unless VeSync expires or revokes that session.
+The integration stores the authenticated VeSync session after step 2. If step 5
+succeeds on your account, normal Home Assistant restarts should continue to reuse
+that session until VeSync expires or revokes it. If step 5 fails, please report
+the sanitized error: that means VeSync invalidates or refuses the pre-existing
+token when 2FA is enabled, and this bridge is not sufficient for that account.
 
 If upstream `pyvesync` gains a proper 2FA challenge API, the intention is to
 replace this bootstrap with a normal OTP step rather than maintain a competing
@@ -104,17 +114,17 @@ overriding the built-in integration.
 ### Existing VeSync entry
 
 Leave the existing VeSync entry in place. If it loads successfully, check your
-entities and you are done.
+entities before changing anything else.
 
 If Home Assistant asks you to reauthenticate and VeSync reports that 2FA is
-required, use the one-time bootstrap procedure described above. Once the login
-succeeds, turn 2FA back on before returning to normal use.
+required, use the bootstrap procedure described above. Once the login succeeds,
+turn 2FA back on and perform the step-5 restart/reload test.
 
 ### New VeSync entry
 
 For a new setup, install this custom integration first and restart Home Assistant.
 Then add VeSync from **Settings → Devices & services**. If the account already has
-2FA enabled, use the same one-time bootstrap procedure for the initial login.
+2FA enabled, use the same bootstrap procedure for the initial login.
 
 ## Security notes
 
@@ -153,6 +163,30 @@ runtime import/session smoke test against Home Assistant 2026.8.0 on every
 change. Updates should still be tested before installing them on a production
 Home Assistant instance.
 
+## What the automated tests prove
+
+The checks deliberately separate things we can prove from things that require a
+real VeSync account.
+
+The automated suite verifies that:
+
+- the repository has a valid HACS/custom-integration layout;
+- Hassfest accepts the integration. It reports the expected warning that the
+  `vesync` domain collides with a built-in integration — that collision is
+  intentional because this project is an override;
+- every custom module imports against the pinned Home Assistant 2026.8.0 runtime;
+- all entity platforms still delegate directly to Home Assistant Core;
+- the config-flow version remains aligned with Core 2026.8.0;
+- a `pyvesync` authenticated session can be serialized into the config-entry
+  fields and restored into a fresh manager with the manager enabled;
+- the integration keeps the `vesync` domain and the upstream registry path rather
+  than inventing a second set of entities.
+
+The automated suite cannot verify VeSync's private server policy for a real
+2FA-enabled account, nor can it prove that every existing entity ID survives the
+first field migration without running against an actual Home Assistant registry.
+Those two points are the purpose of the initial field test.
+
 ## Why the repository uses the same `vesync` domain
 
 Home Assistant supports a custom integration overriding a built-in integration
@@ -171,7 +205,8 @@ are delegated directly to Home Assistant Core.
 
 This means there is no usable saved session yet, or the previous one was revoked.
 Temporarily disable VeSync 2FA, submit the Home Assistant login once, confirm the
-integration loads, and re-enable 2FA immediately.
+integration loads, re-enable 2FA immediately, then perform the restart/reload test
+described above.
 
 ### The integration works until a VeSync session is revoked
 
