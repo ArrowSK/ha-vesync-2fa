@@ -1,44 +1,54 @@
 # Changelog
 
+## 0.3.0 — 2026-08-13
+
+Safety redesign after live testing of the same-domain override.
+
+- Moves the diagnostic integration from `vesync` to the separate
+  `vesync_2fa_probe` domain.
+- Stops overriding or importing Home Assistant Core's built-in VeSync
+  integration during protocol discovery.
+- Removes all VeSync entity/platform adapters, coordinator overrides, session
+  persistence and registry migration code from the diagnostic build.
+- Adds a one-shot config flow that sends only the known first-stage VeSync
+  password-authentication request and always finishes without creating a
+  persistent Home Assistant config entry.
+- Reduces raw responses to a safe metadata summary containing only the server
+  code, sanitized MFA method names, presence flags and response field names.
+- Explicitly does not exchange authorization codes or submit a second factor.
+- Adds EU/global endpoint selection and account country-code input.
+- Adds regression checks that fail if `custom_components/vesync` returns to the
+  repository, if the probe creates entries, or if authorization-code exchange
+  logic is added to the diagnostic build.
+- Updates runtime tests so Home Assistant Core's `vesync` component and the
+  custom probe import side by side with different domains.
+
+The redesign follows a live Home Assistant test where version 0.2.0 masked the
+existing built-in VeSync connection while the same-domain custom component was
+installed. Removing the custom component and restarting Home Assistant restored
+the original connection, confirming that the stored Core config entry had not
+been deleted. Protocol discovery is now isolated from the working integration.
+
 ## 0.2.0 — 2026-08-13
 
 Authentication design reset around native two-factor support.
 
-- Drops the session-only workaround as the product solution. Session persistence
-  remains useful, but the integration no longer tells users to weaken account
-  security to bootstrap it.
-- Adds a dedicated VeSync first-stage authentication layer that preserves the raw
-  MFA branch before `pyvesync` turns it into a generic login failure.
-- Detects `mfaMethodList`, `bizToken` and VeSync's known 2FA-required response
-  without logging or storing challenge secrets.
-- Adds a Home Assistant MFA discovery step that displays only a public-safe
-  challenge summary.
-- Keeps the exact OTP submission request unimplemented until it has been verified
-  from a real VeSync MFA challenge. No speculative authentication endpoints are
-  called.
-- Promotes expired/revoked sessions into Home Assistant reauthentication so the
-  final OTP flow can be reused when VeSync asks for authentication again.
-- Keeps the existing `vesync` domain, config-entry version and Home Assistant Core
-  platform implementations to protect existing entity/device registry identity.
-- Expands runtime tests to cover normal authorization-code responses, MFA
-  challenge detection, challenge precedence and secret redaction.
-- Adds a repository validation rule preventing the obsolete disable-2FA workaround
-  from returning to the public UI/documentation.
+- Dropped the session-only workaround as the intended final solution.
+- Added first-stage MFA challenge discovery and public-safe metadata output.
+- Kept the same `vesync` domain in an attempt to preserve existing registry
+  identity.
+
+This release was superseded by 0.3.0 after live testing showed that a same-domain
+custom component could mask the working built-in VeSync connection. Do not use
+0.2.0 for protocol discovery.
 
 ## 0.1.0 — 2026-08-13
 
 Initial public prototype.
 
-- Kept the Home Assistant Core `vesync` domain so an existing VeSync config entry
-  and entity registry could be retained.
-- Saved the authenticated `pyvesync` session after a successful login.
-- Restored that session on Home Assistant restart instead of forcing another
-  password login.
-- Delegated all VeSync entity platforms and diagnostics to Home Assistant Core
-  2026.8.x to minimise behavioural drift.
-- Added HACS packaging, Hassfest/HACS validation, local structural checks,
-  documentation, security guidance and upstream attribution.
+- Saved and restored authenticated `pyvesync` sessions.
+- Delegated VeSync entity platforms to Home Assistant Core.
+- Added HACS packaging, validation and documentation.
 
-The 0.1.0 session-only authentication approach was superseded by 0.2.0 because it
-could not recover correctly when VeSync later required authentication on an
-account protected by 2FA.
+This session-only approach was superseded because it could not complete future
+reauthentication on accounts protected by 2FA.
