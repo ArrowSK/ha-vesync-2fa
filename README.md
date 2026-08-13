@@ -1,281 +1,281 @@
-# VeSync 2FA Session Bridge for Home Assistant
+# VeSync 2FA for Home Assistant
 
-This is a small Home Assistant override for the built-in VeSync integration.
-It exists for one specific problem: VeSync accounts with account-level two-factor
-authentication enabled cannot currently complete a fresh password login through
-`pyvesync`, which is the library used by Home Assistant.
+This repository is a Home Assistant custom integration for VeSync accounts that
+use account-level two-factor authentication.
 
-The integration does **not** pretend that the missing OTP API has been solved.
-Instead, it keeps the authenticated VeSync session obtained from one successful
-login and restores that same session after Home Assistant restarts. The intended
-result is that 2FA can be turned back on after the bootstrap login without Home
-Assistant immediately losing access to the already-authenticated session.
+The goal is narrow: make VeSync authentication work properly with 2FA enabled,
+including future reauthentication, without creating a second set of Home
+Assistant entities.
 
-**Status of 0.1.0:** the Home Assistant code path, imports, HACS packaging and
-session save/restore logic are tested automatically against Home Assistant
-2026.8.0 and `pyvesync` 3.4.2. The remaining server-side question — whether VeSync
-continues accepting the saved token after 2FA is re-enabled on a real account —
-cannot be proven in CI without a real VeSync account. Treat 0.1.0 as an initial
-field-test release until that has been confirmed on real hardware.
+This is an override of Home Assistant's built-in `vesync` integration. It keeps
+the same integration domain, config-entry version, device identifiers and entity
+implementations. Only the authentication/session layer is changed.
 
-## What this changes
+## Current status
 
-Home Assistant Core 2026.8.0 logs into VeSync again when the integration starts.
-That works for ordinary accounts, but VeSync rejects the password login when 2FA
-is enabled with the message `user login requires 2fa authentication`.
+**0.2.0 is a protocol-discovery build, not the final OTP implementation.**
 
-This override changes only the authentication/session layer:
+It already does three useful things that the built-in integration cannot do:
 
-- after a successful VeSync login, the returned session token, account ID,
-  country code and VeSync region are saved in the existing Home Assistant config
-  entry;
-- on the next Home Assistant restart, those values are restored into `pyvesync`
-  instead of forcing another password login;
-- the normal Home Assistant Core VeSync entity platforms are used unchanged;
-- if VeSync invalidates the saved session, the next integration setup or reload
-  cannot reuse it and Home Assistant will require authentication again. Normal
-  device polling still follows `pyvesync`'s own error handling, so a revoked
-  token may first show up as stale or failed device updates rather than an
-  immediate reauthentication prompt.
+- it sends VeSync's current first-stage authentication request itself instead of
+  letting `pyvesync` discard the MFA response;
+- it detects a real VeSync MFA challenge and preserves the challenge state in
+  memory without logging or storing its secrets;
+- it turns an expired/revoked VeSync session into Home Assistant
+  reauthentication instead of repeatedly attempting a password-only background
+  login.
 
-Everything that creates fans, sensors, switches, numbers, selects, lights,
-humidifiers and update entities is still Home Assistant Core's VeSync code.
+What is still missing is the exact request used by VeSync to verify the second
+factor. That request is not implemented in `pyvesync` 3.4.2 and no verified
+open-source implementation has been found. The repository therefore does not
+invent an endpoint or send your one-time code to a guessed API.
 
-## Important limitation: this is not native OTP support
+The next field test is designed to obtain the small piece of non-secret protocol
+metadata needed to finish that implementation. You can run it with 2FA left on.
 
-`pyvesync` 3.4.2 does not expose VeSync's interactive 2FA/OTP challenge. There is
-an open upstream request for it: [webdjoe/pyvesync#367](https://github.com/webdjoe/pyvesync/issues/367).
-Home Assistant has the corresponding feature request and issue history as well.
+## Why the previous session-only approach was dropped
 
-Because that API is not documented and no reliable open-source implementation of
-the challenge is available, this repository does not guess at private endpoints
-or ask you to paste a one-time code into a flow that cannot actually verify it.
+Saving a valid VeSync cloud token is useful because Home Assistant should not ask
+for MFA on every restart. It is not a complete solution by itself: a cloud token
+can eventually expire or be revoked, and `pyvesync` currently responds by trying
+username/password authentication again. An account that requires MFA cannot
+complete that password-only retry.
 
-For the first login, or after VeSync revokes the saved session, the current
-bootstrap procedure is:
+Session persistence remains in this project, but it is now only one part of the
+design. The required end state is:
 
-1. Temporarily disable two-factor authentication in the VeSync app.
-2. Complete the VeSync login/reauthentication in Home Assistant once.
-3. Confirm that your devices and entities are back.
-4. Re-enable two-factor authentication in the VeSync app immediately.
-5. Restart or reload Home Assistant once and confirm that VeSync still loads from
-   the saved session without asking you to disable 2FA again.
+1. Home Assistant sends username/password to VeSync.
+2. If VeSync requires MFA, Home Assistant continues to an MFA step.
+3. The user enters the VeSync second factor.
+4. VeSync returns an authenticated session.
+5. Home Assistant stores and reuses that session across restarts.
+6. When VeSync later requires authentication again, Home Assistant opens the
+   same MFA reauthentication flow.
 
-The integration stores the authenticated VeSync session after step 2. If step 5
-succeeds on your account, normal Home Assistant restarts should continue to reuse
-that session until VeSync expires or revokes it. If step 5 fails, please report
-the sanitized error: that means VeSync invalidates or refuses the pre-existing
-token when 2FA is enabled, and this bridge is not sufficient for that account.
+No account-security downgrade is part of that design.
 
-If upstream `pyvesync` gains a proper 2FA challenge API, the intention is to
-replace this bootstrap with a normal OTP step rather than maintain a competing
-VeSync protocol implementation here.
+## What we know about the VeSync login protocol
 
-## Preserving an existing Home Assistant setup
+The current `pyvesync` login is a two-stage exchange:
 
-If you already use the built-in VeSync integration, **do not delete it before
-installing this repository**.
+1. `POST /globalPlatform/api/accountAuth/v1/authByPWDOrOTM`
+2. `POST /user/api/accountManage/v1/loginByAuthorizeCode4Vesync`
 
-This custom integration deliberately keeps the domain `vesync`, the existing
-config-entry format, the built-in entity implementations, the built-in unique-ID
-logic and the built-in device identifiers. Home Assistant therefore continues to
-use the existing config entry and entity registry records.
+For an ordinary login, the first response contains an `authorizeCode`, which is
+then exchanged for the cloud token in step 2.
 
-That is especially important if dashboards, automations, scripts, Powercalc or
-other integrations refer to your current entity IDs.
+The first response schema also contains `bizToken`, `mfaMethodList` and
+`verifyEmail`. Those fields are present in current open-source VeSync clients and
+in `pyvesync`'s own test fixtures, but `pyvesync` 3.4.2 models only the account ID
+and authorization code. When VeSync requires 2FA, the library raises a login
+error before Home Assistant can use the additional challenge information.
 
-Installing the override is intended to be an in-place change:
+Version 0.2.0 reads that first response directly and extracts only the information
+needed to classify the challenge. The challenge token itself remains private in
+memory; the UI exposes only a sanitized summary such as:
 
-1. Install the custom repository.
-2. Restart Home Assistant.
-3. Reauthenticate the existing VeSync entry only if Home Assistant asks you to.
-4. Verify the existing entity IDs before changing any automations or dashboards.
+```text
+server_code=-12345; methods=TOTP,EMAIL; biz_token=yes; verify_email=yes; result_keys=...
+```
 
-Removing the VeSync config entry and adding it again is unnecessary and defeats
-part of the entity-preservation design.
+That summary is intentionally designed to be safe for a public GitHub issue. It
+does not contain the password, account ID, email address, authorization code,
+cloud token or MFA challenge token.
 
-## Installation with HACS
+## First field test
 
-This repository is meant to be installed as a **custom repository**. HACS does
-not accept integrations that override a Home Assistant Core integration into its
-default catalogue, so you need to add this repository manually.
+Do not remove your existing VeSync integration entry.
 
-1. Open HACS in Home Assistant.
-2. Open the three-dot menu and choose **Custom repositories**.
-3. Add:
+1. Add this repository to HACS as a custom **Integration** repository:
    `https://github.com/ArrowSK/ha-vesync-2fa`
-4. Select **Integration** as the category.
-5. Install **VeSync 2FA Session Bridge**.
-6. Restart Home Assistant.
+2. Install **VeSync 2FA**.
+3. Restart Home Assistant.
+4. Open the existing VeSync integration and start reauthentication if Home
+   Assistant requests it. If the existing entry is already in a failed state,
+   use its **Reconfigure/Reauthenticate** action.
+5. Enter the same VeSync email and password while leaving 2FA enabled.
+6. When **VeSync two-factor challenge detected** appears, copy only the line
+   labelled **Safe metadata** and post it in repository issue #1.
 
-After restart, the VeSync integration card should show that a custom component is
-overriding the built-in integration.
+Do not post a screenshot if it contains your email address elsewhere on the
+page. The safe metadata line is sufficient for the first test.
 
-### Existing VeSync entry
+This test does not ask for the one-time code and cannot consume or invalidate a
+code. It makes one normal first-stage login request and stops when VeSync returns
+the MFA branch.
 
-Leave the existing VeSync entry in place. If it loads successfully, check your
-entities before changing anything else.
+## Preserving existing entities
 
-If Home Assistant asks you to reauthenticate and VeSync reports that 2FA is
-required, use the bootstrap procedure described above. Once the login succeeds,
-turn 2FA back on and perform the step-5 restart/reload test.
+The custom integration deliberately remains `vesync` rather than using a new
+Home Assistant domain. It also continues to use Home Assistant Core's VeSync
+entity platforms directly.
 
-### New VeSync entry
+That matters because Home Assistant's existing VeSync registry identity is based
+on the VeSync device identifiers returned by the account. Replacing the domain or
+rewriting the entity implementations would create needless migration risk.
 
-For a new setup, install this custom integration first and restart Home Assistant.
-Then add VeSync from **Settings → Devices & services**. If the account already has
-2FA enabled, use the same bootstrap procedure for the initial login.
+For an existing setup:
 
-## Security notes
+- leave the current VeSync config entry in place;
+- install this repository over the built-in integration;
+- restart Home Assistant;
+- reauthenticate the existing entry when needed;
+- confirm the existing entity IDs before changing dashboards, automations or
+  dependent integrations.
 
-The saved VeSync session token is a credential. Treat it like a password.
+If an entity unexpectedly appears with an `_2` suffix, stop there and open an
+issue. Do not "fix" dashboards around the duplicate. The registry mapping should
+be corrected instead.
 
-Home Assistant already stores the VeSync username and password in the config
-entry. This integration adds the VeSync session token and its associated account
-metadata to that same entry. Do not publish or upload your Home Assistant
-`.storage/core.config_entries` file.
+## Authentication and session behaviour
 
-The integration never writes the session token to its own logs. The diagnostic
-handler remains Home Assistant Core's VeSync diagnostic implementation and does
-not export config-entry credentials, but you should still review any diagnostic
-bundle before posting it publicly.
+A completed VeSync session contains a cloud token, account ID, country code and
+region. The integration stores those values in the existing Home Assistant config
+entry and restores them on restart.
 
-There is no external relay, developer server or telemetry service in this
-project. VeSync traffic goes from Home Assistant to VeSync through `pyvesync`, as
-it does with the built-in integration.
+This is intentional: a valid session should not trigger MFA again merely because
+Home Assistant restarted.
+
+If VeSync later rejects the token, `pyvesync` may first attempt its own
+password-based reauthentication. The custom coordinator watches the resulting
+authentication state. When the manager becomes unauthenticated, Home Assistant is
+told that the config entry needs reauthentication rather than leaving the VeSync
+entities silently stale.
+
+Once the second-factor request is verified and implemented, that reauthentication
+flow will lead to the same OTP step as initial setup.
+
+## Security model
+
+Authentication code has stricter rules than the rest of the integration:
+
+- passwords are never logged by this integration;
+- VeSync cloud tokens are never logged;
+- `bizToken`/MFA challenge tokens are never logged and are not written to the
+  config entry;
+- authorization codes are never logged;
+- account IDs and email addresses are not included in public-safe MFA metadata;
+- the authentication module contains no debug logger by design;
+- an unknown MFA protocol stops the flow instead of trying speculative endpoints.
+
+The normal authenticated VeSync session is stored in Home Assistant's config
+entry, alongside the credentials Home Assistant already keeps for this
+integration. Treat `.storage/core.config_entries` as sensitive and never post it
+publicly.
+
+There is no relay service, external developer server or telemetry backend in this
+project. Home Assistant talks directly to VeSync through its local HTTP session
+and `pyvesync`.
 
 ## Compatibility
 
-The first release is intentionally narrow:
+Version 0.2.0 is intentionally pinned to:
 
-- Home Assistant: **2026.8.0 or newer within the 2026.8 line**
-- `pyvesync`: **3.4.2**
-- integration domain: **`vesync`**
+- Home Assistant Core 2026.8.x, validated against 2026.8.0;
+- `pyvesync` 3.4.2;
+- Python/runtime versions supported by that Home Assistant release.
 
-The platform modules are thin adapters to the VeSync implementation shipped with
-Home Assistant Core. That keeps device and entity behaviour aligned with your
-installed Home Assistant version rather than copying thousands of lines that
-would immediately start drifting upstream.
+The pin is deliberate. The integration currently reuses `pyvesync`'s private
+second-stage authorization-code exchange so that cross-region login behaviour is
+not duplicated. CI imports the integration against the exact pinned runtime to
+catch an upstream signature change before release.
 
-A future Home Assistant release can still change internal VeSync interfaces. The
-repository therefore runs HACS validation, Hassfest, structural checks and a
-runtime import/session smoke test against Home Assistant 2026.8.0 on every
-change. Updates should still be tested before installing them on a production
-Home Assistant instance.
+## Automated checks
 
-## What the automated tests prove
+Every change on `main` runs:
 
-The checks deliberately separate things we can prove from things that require a
-real VeSync account.
+- repository-specific structural validation;
+- Python compilation;
+- Home Assistant Hassfest;
+- HACS validation;
+- a runtime smoke test with Home Assistant 2026.8.0 and `pyvesync` 3.4.2.
 
-The automated suite verifies that:
+The smoke test verifies:
 
-- the repository has a valid HACS/custom-integration layout;
-- Hassfest accepts the integration. It reports the expected warning that the
-  `vesync` domain collides with a built-in integration — that collision is
-  intentional because this project is an override;
-- every custom module imports against the pinned Home Assistant 2026.8.0 runtime;
-- all entity platforms still delegate directly to Home Assistant Core;
-- the config-flow version remains aligned with Core 2026.8.0;
-- a `pyvesync` authenticated session can be serialized into the config-entry
-  fields and restored into a fresh manager with the manager enabled;
-- the integration keeps the `vesync` domain and the upstream registry path rather
-  than inventing a second set of entities.
+- every custom integration module imports;
+- a VeSync authenticated session survives a save/restore round trip;
+- an ordinary first-stage auth response produces an authorization code;
+- an MFA response produces a structured MFA challenge;
+- challenge metadata is sanitized and does not expose account IDs, email
+  addresses or challenge tokens;
+- MFA metadata takes precedence over an authorization code if both are ever
+  returned together.
 
-The automated suite cannot verify VeSync's private server policy for a real
-2FA-enabled account, nor can it prove that every existing entity ID survives the
-first field migration without running against an actual Home Assistant registry.
-Those two points are the purpose of the initial field test.
+CI cannot manufacture a real MFA challenge for a private VeSync account. That is
+why the first field test above is still required.
 
-## Why the repository uses the same `vesync` domain
+## HACS installation
 
-Home Assistant supports a custom integration overriding a built-in integration
-when both use the same domain. That is exactly what is needed here: using a new
-domain would create a second integration and would make preserving the existing
-VeSync config entry and entity registry much harder.
+This project overrides a Home Assistant Core integration, so it is installed as a
+HACS custom repository rather than pretending to be a separate VeSync
+integration.
 
-The trade-off is that the custom integration becomes responsible for staying
-compatible with Home Assistant's built-in VeSync implementation. This repository
-tries to keep that surface small: authentication is local code; entity platforms
-are delegated directly to Home Assistant Core.
+In HACS:
+
+1. Open **Custom repositories**.
+2. Add `https://github.com/ArrowSK/ha-vesync-2fa`.
+3. Select **Integration**.
+4. Install **VeSync 2FA**.
+5. Restart Home Assistant.
+
+Do not remove the built-in VeSync config entry first.
 
 ## Troubleshooting
 
-### `VeSync requires 2FA for this sign-in`
+### The MFA challenge screen appears
 
-This means there is no usable saved session yet, or the previous one was revoked.
-Temporarily disable VeSync 2FA, submit the Home Assistant login once, confirm the
-integration loads, re-enable 2FA immediately, then perform the restart/reload test
-described above.
+That is the expected result for 0.2.0 on a 2FA-enabled account. Copy the safe
+metadata line to issue #1. Do not post the full Home Assistant config entry or raw
+VeSync HTTP response.
 
-### The integration works until a VeSync session is revoked
+### The login form says invalid authentication
 
-That is the main remaining upstream limitation. Repeat the bootstrap. A native OTP
-flow cannot be added safely until the VeSync challenge protocol is known or
-`pyvesync` exposes it. If controls stop updating before Home Assistant asks for
-reauthentication, reload the VeSync integration; that forces setup to validate
-the saved session again.
+First verify the credentials in the official VeSync app. If they are correct,
+open an issue with the Home Assistant version and the exact sanitized error. Do
+not enable pyvesync raw request/response logging with a real account unless you
+intend to inspect and redact it locally before sharing anything.
+
+### VeSync works after restart but later becomes unavailable
+
+A stale/expired cloud token should now cause Home Assistant to request
+reauthentication. That is expected. The final MFA implementation will complete
+that flow interactively rather than relying on `pyvesync`'s password-only retry.
 
 ### Entities appeared with `_2`
 
-Stop before editing dashboards or automations. Check whether the original VeSync
-config entry was removed and re-added. This override is designed to retain the
-existing entry. Please open an issue with sanitized entity-registry information;
-do not include passwords, tokens, account IDs, MAC addresses or raw config-entry
-storage.
-
-### Home Assistant says the custom component is incompatible after an upgrade
-
-Do not work around it by deleting the VeSync integration. Open an issue with the
-Home Assistant version, this integration version and the relevant traceback. The
-right fix is to update the override to the new Core VeSync interface while
-preserving the registry identifiers.
+Do not rename or rebuild your automations. Open an issue and include only the
+entity IDs, device model and Home Assistant version. Never include device CIDs,
+MAC addresses or raw registry/config-entry files.
 
 ## Reporting bugs
 
-Please include:
+Useful information:
 
 - Home Assistant Core version;
 - this integration version;
-- device model;
-- whether the problem happens during initial login, restart, reauthentication or
-  normal polling;
-- a sanitized traceback if there is one.
+- VeSync device model;
+- whether the problem occurs during initial setup, MFA detection,
+  reauthentication or normal polling;
+- sanitized traceback if one exists;
+- the **Safe metadata** line if the MFA challenge screen is involved.
 
-Please remove email addresses, passwords, VeSync tokens, account IDs, MAC
-addresses, device CIDs and anything from `.storage/core.config_entries` before
-posting.
+Do not post passwords, one-time codes, email addresses, VeSync tokens, account
+IDs, `bizToken` values, authorization codes, device CIDs, MAC addresses or
+`.storage/core.config_entries`.
 
-## Development and validation
+## Upstream work and attribution
 
-Run the local structural checks with:
+This project builds on the VeSync integration in Home Assistant Core and on
+`pyvesync`. Native 2FA support is also tracked upstream in `pyvesync` issue #367
+and Home Assistant Core issue #153551.
 
-```bash
-python scripts/validate.py
-python -m compileall -q custom_components scripts
-```
-
-The GitHub Actions suite also runs:
-
-- repository-specific structural validation and Python compilation;
-- Home Assistant Hassfest;
-- HACS repository validation;
-- a runtime smoke test that installs Home Assistant 2026.8.0 and `pyvesync`
-  3.4.2, imports every custom-component module and verifies the saved-session
-  round trip.
-
-The repository intentionally contains one Home Assistant integration only:
-`custom_components/vesync`.
-
-## Upstream and attribution
-
-This project is an override of the VeSync integration shipped in
-[Home Assistant Core](https://github.com/home-assistant/core/tree/dev/homeassistant/components/vesync)
-and depends on [pyvesync](https://github.com/webdjoe/pyvesync).
+The entity/platform behaviour in this repository is intentionally delegated to
+Home Assistant Core rather than copied and forked. That keeps the override small
+and makes later upstreaming of the authentication work more realistic.
 
 Home Assistant Core is licensed under Apache License 2.0. `pyvesync` is an
-independent project distributed under its own MIT licence. This repository does
-not bundle `pyvesync`; Home Assistant installs the declared package dependency.
+independent MIT-licensed project and is installed as a dependency rather than
+bundled here.
 
 VeSync, Etekcity and Levoit names belong to their respective owners. This project
 is not affiliated with or endorsed by VeSync, Etekcity, Levoit, Home Assistant or
@@ -283,4 +283,4 @@ the `pyvesync` maintainers.
 
 ## Licence
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache License 2.0. See `LICENSE` and `NOTICE`.
