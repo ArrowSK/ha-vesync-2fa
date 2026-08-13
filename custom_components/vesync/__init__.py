@@ -61,7 +61,9 @@ async def async_setup_entry(
 
     try:
         if not used_saved_session:
-            await async_authenticate(manager)
+            await async_authenticate(
+                manager, username=username, password=password
+            )
         await manager.update()
         await manager.check_firmware()
     except VeSyncMFARequired as err:
