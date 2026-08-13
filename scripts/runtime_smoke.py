@@ -77,6 +77,45 @@ def main() -> None:
     assert mfa.has_authorize_code is False
     mfa_safe = mfa.safe_summary
 
+    # Confirmed by a real, redacted VeSync 2FA field test on 2026-08-13.
+    # Values below contain protocol structure only; no account data or token
+    # values from the live response are retained in the repository.
+    confirmed_field_shape = auth.parse_probe_response(
+        {
+            "code": -11257129,
+            "msg": "user login requires 2fa authentication",
+            "result": {
+                "accountID": "redacted",
+                "accountLockTimeInSec": None,
+                "authorizeCode": "",
+                "avatarIcon": "",
+                "bizToken": "redacted-challenge-token",
+                "emailUpdateToSame": "",
+                "mailConfirmation": False,
+                "mfaMethodList": ["email", "otp", "backupCode"],
+                "nickName": "",
+                "registerAppVersion": "",
+                "registerSourceDetail": None,
+                "registerTime": "",
+                "userType": "",
+                "verifyEmail": "",
+            },
+        }
+    )
+    assert confirmed_field_shape.outcome == "mfa_required"
+    assert confirmed_field_shape.server_code == -11257129
+    assert confirmed_field_shape.methods == ("email", "otp", "backupCode")
+    assert confirmed_field_shape.has_biz_token is True
+    assert confirmed_field_shape.has_verify_email is False
+    assert confirmed_field_shape.has_authorize_code is False
+    confirmed_safe = confirmed_field_shape.safe_summary
+    assert "server_code=-11257129" in confirmed_safe
+    assert "methods=email,otp,backupCode" in confirmed_safe
+    assert "biz_token=yes" in confirmed_safe
+    assert "verify_email=no" in confirmed_safe
+    assert "authorize_code=no" in confirmed_safe
+    assert "redacted-challenge-token" not in confirmed_safe
+
     challenge_without_message = auth.parse_probe_response(
         {
             "code": 0,
@@ -100,7 +139,7 @@ def main() -> None:
     assert rejected.outcome == "rejected"
     rejected_safe = rejected.safe_summary
 
-    for safe in (normal_safe, mfa_safe, rejected_safe):
+    for safe in (normal_safe, mfa_safe, confirmed_safe, rejected_safe):
         for secret in (
             "private-account-id",
             "private@example.invalid",
@@ -109,6 +148,7 @@ def main() -> None:
             "another-private-token",
             "must-not-be-used",
             "plain-test-password",
+            "redacted-challenge-token",
         ):
             assert secret not in safe
 
@@ -121,6 +161,7 @@ def main() -> None:
     print("Isolated probe import/domain: OK")
     print("Pinned pyvesync request model: OK")
     print("MFA response classification: OK")
+    print("Confirmed live MFA challenge shape: OK")
     print("Safe metadata redaction: OK")
 
 
