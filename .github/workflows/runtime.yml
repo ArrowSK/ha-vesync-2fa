@@ -26,3 +26,5 @@ jobs:
           python -m pip install "homeassistant==2026.8.0" "pyvesync==3.4.2"
       - name: Import custom component and test session round trip
         run: python scripts/runtime_smoke.py
+      - name: Serialize initial config-flow form
+        run: python scripts/schema_smoke.py
