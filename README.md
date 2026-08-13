@@ -4,7 +4,7 @@
 
 It is **not** a replacement for Home Assistant's built-in **VeSync** integration. The probe uses its own domain, `vesync_2fa_probe`, so the existing Home Assistant VeSync config entry, devices and entities stay untouched.
 
-## Current status — 0.6.0
+## Current status — 0.7.0
 
 A live VeSync account with 2FA enabled returned this sanitized challenge shape:
 
@@ -14,40 +14,58 @@ outcome=mfa_required; server_code=-11257129; methods=email,otp,backupCode; biz_t
 
 That confirms VeSync returns a `bizToken`, advertises available MFA methods and withholds the normal `authorizeCode` until a second authentication stage succeeds.
 
-The 0.5.0 batch then produced the following useful protocol evidence:
+The 0.5.0 batch then established that adding plausible MFA fields without a code did not advance the challenge: C2, C3 and C4 all returned the same `-11257129` response. Guessed `authByMFA` and `verifyMFA` paths also did not provide a usable continuation.
 
-- C2, C3 and C4 all returned the same `-11257129` MFA challenge even when the known password-auth endpoint was retried with the credential hash, `bizToken`, and several plausible MFA-method field shapes. In other words, those no-code fields did not visibly advance the challenge.
-- C5 and C6, which tried guessed `authByMFA` and `verifyMFA` paths, both returned HTTP 200 with VeSync code `-11102086` and no result fields. The project does not assign a meaning to that undocumented code; the only safe conclusion is that those guesses did not produce a usable continuation.
+Version 0.6.0 introduced a separate OTP step in the Home Assistant config flow. On a real HA 2026.8 installation that multi-step form produced a frontend/config-flow validation error where the original username/password/country/region keys were submitted against the OTP-only schema. Version 0.7.0 removes that entire failure mode rather than trying to patch around it.
 
-Version 0.6.0 therefore stops spending user effort on one hypothesis per Home Assistant run. It uses the two VeSync authentication endpoints that are already present in current open-source clients and performs a bounded multi-candidate test around them.
+## What 0.7.0 does
 
-## What 0.6.0 does
+0.7.0 uses **one Home Assistant form only**. The user enters:
 
-After the verified first-stage challenge, and only when VeSync advertises the `otp` MFA method, the probe performs two no-code preflight requests automatically against the known `loginByAuthorizeCode4Vesync` endpoint:
+- VeSync email;
+- VeSync password;
+- a fresh current authenticator code;
+- account country code;
+- VeSync API region.
 
-1. challenge `bizToken` without an `authorizeCode`;
-2. the same request with `regionChange=lastRegion`, because current `pyvesync` already uses that combination for VeSync's cross-region token flow.
+After submission the probe performs the already-verified first-stage password request. If VeSync returns the known MFA challenge and advertises the `otp` method, the same run automatically tries up to **15 bounded MFA payload hypotheses**.
 
-If neither preflight request succeeds or triggers a safety stop, Home Assistant shows one additional form asking for a **fresh authenticator code**. The code is entered locally in Home Assistant and is not copied into GitHub or chat.
+The candidates vary plausible code field names and payload shapes while staying on only the two VeSync authentication endpoints already used by current open-source clients:
 
-That one code is then tried against a short, ordered list of plausible field names on the already-known password-auth endpoint: `mfaCode`, `otp`, `otpCode`, `verificationCode`, `verifyCode`, and `code`. Every request includes the real challenge `bizToken`, the advertised `mfaMethod=otp`, the existing client identity, and the same password hash already used by the verified first-stage request.
+- `/globalPlatform/api/accountAuth/v1/authByPWDOrOTM`
+- `/user/api/accountManage/v1/loginByAuthorizeCode4Vesync`
 
-If all of those are completely ignored and VeSync simply repeats the original MFA challenge, the probe tries three final code-field variants against the already-known `loginByAuthorizeCode4Vesync` endpoint.
+The ladder covers common field names such as `mfaCode`, `otp`, `otpCode`, `verificationCode`, `verifyCode`, `code`, `oneTimePassword` and `totp`; a small number of method-name and nested-object variants; and two candidates on the known authorize-code login endpoint.
 
-The ladder stops immediately if VeSync:
+If any candidate returns a real `authorizeCode`, the probe automatically performs the normal `loginByAuthorizeCode4Vesync` exchange in memory to verify whether VeSync will issue a session token. The token value itself is never displayed or persisted.
 
-- returns an `authorizeCode` or session token;
-- reports rate limiting or an account lock;
-- explicitly reports an invalid or expired code;
-- or returns a materially different response that gives us a new protocol signal.
+The ladder pauses briefly between requests and stops immediately when VeSync reports:
 
-This is still protocol discovery, not a finished production login implementation. Because VeSync does not document this MFA API, any incorrect candidate could theoretically count as a failed MFA attempt. The probe limits requests, pauses between them, and stops on the first meaningful response to reduce that risk.
+- an `authorizeCode` or session token;
+- rate limiting;
+- account lock;
+- an explicit invalid/expired MFA code response.
+
+If none of the 15 shapes is recognised, the result still gives one sanitized line containing every attempt, so the next development step can be chosen without asking the tester to repeat 15 separate Home Assistant runs.
+
+## Why one form
+
+The 0.6.0 multi-step config flow was technically valid in isolation but failed in the actual Home Assistant frontend with errors such as:
+
+```text
+extra keys not allowed @ data['username']
+extra keys not allowed @ data['password']
+extra keys not allowed @ data['country_code']
+extra keys not allowed @ data['api_region']
+```
+
+0.7.0 deliberately avoids any `async_step_otp` transition. The same schema receives all values once, so Home Assistant never has to switch from a credential schema to an OTP-only schema inside the same temporary flow.
 
 ## Security model
 
 Credentials are entered only in the local Home Assistant config flow. The verified first request uses `pyvesync`'s normal request model, which hashes the password before sending it to VeSync.
 
-For the MFA step, the flow retains only the password hash and the minimum challenge context needed for the live diagnostic attempt. The plaintext password is not stored on the flow object. The authenticator code is held only long enough to make the bounded requests and is discarded immediately afterwards.
+For the MFA ladder, the probe keeps only the password hash, challenge context and authenticator code in memory for the duration of that one run. The local references are dropped immediately afterwards.
 
 No password, password hash, authenticator code, email address, account ID, `bizToken`, `authorizeCode`, cloud token or raw VeSync response is written to a Home Assistant config entry, log, file, GitHub issue or safe result string.
 
@@ -62,12 +80,12 @@ If an old 0.1.x or 0.2.x build remains installed, remove it and restart Home Ass
 For the current diagnostic build:
 
 1. Add `https://github.com/ArrowSK/ha-vesync-2fa` to HACS as a custom **Integration** repository.
-2. Install or update **VeSync 2FA Probe** to 0.6.0.
+2. Install or update **VeSync 2FA Probe** to 0.7.0.
 3. Restart Home Assistant.
 4. Leave the existing built-in **VeSync** integration alone.
-5. Open **Settings → Devices & services → Add integration → VeSync 2FA Probe**.
-6. Enter the VeSync credentials locally in Home Assistant and use the correct account country/API region.
-7. If Home Assistant asks for an authenticator code, enter a fresh current code there. Do not paste the code into GitHub or chat.
+5. Start a **new** flow at **Settings → Devices & services → Add integration → VeSync 2FA Probe**. Do not reuse a browser form that was already open before the restart.
+6. Enter the VeSync credentials locally, a fresh current authenticator code, `HU` (for a Hungarian account) and `EU`.
+7. Submit once and wait for the automatic ladder to finish.
 8. Copy only the safe metadata shown on the final result screen.
 
 The probe intentionally finishes without creating a persistent Home Assistant config entry.
@@ -84,17 +102,24 @@ The built-in integration therefore remains the source of truth while MFA protoco
 
 The project is validated against Home Assistant Core 2026.8.0 and `pyvesync==3.4.2`.
 
-CI runs repository structural checks, Python compilation, Hassfest, HACS validation and a Home Assistant runtime smoke test. The 0.6 structural checks require the separate probe domain, forbid persistent config entries and Core VeSync imports, restrict the live ladder to VeSync's two already-known authentication endpoints, and check that OTP values cannot appear in safe output or persistence code.
+CI runs repository structural checks, Python compilation, Hassfest, HACS validation and a Home Assistant runtime smoke test. The 0.7 structural checks additionally require:
+
+- the separate `vesync_2fa_probe` domain;
+- the single-form config flow with no `async_step_otp`;
+- exactly 15 bounded MFA candidates;
+- only the two already-known VeSync authentication endpoints;
+- no persistent config entry or entity-platform forwarding;
+- no authentication-data logging.
 
 ## Roadmap
 
 1. **Complete:** capture the real first-stage MFA challenge.
-2. **Complete:** test C1 and determine that removing credentials produces `-11000129`.
-3. **Complete:** run C2–C6 in one batch and eliminate several no-code continuation shapes.
-4. **Current:** use one fresh local authenticator code to test a bounded set of field-name hypotheses against VeSync's already-known auth endpoints.
-5. Identify the first request shape that yields an `authorizeCode` or another clear MFA-specific response.
-6. Verify the normal `loginByAuthorizeCode4Vesync` token exchange end to end.
-7. Add safe token/session persistence and reauthentication behavior in an isolated implementation.
+2. **Complete:** eliminate several no-code continuation shapes.
+3. **Complete:** replace the failed multi-step OTP UI with a single-pass Home Assistant flow.
+4. **Current:** run one fresh authenticator code through 15 bounded payload hypotheses in a single attempt.
+5. Identify the first request shape that yields an `authorizeCode` or a clear MFA-specific error.
+6. Verify the normal token exchange end to end.
+7. Implement safe session persistence and reauthentication in an isolated integration.
 8. Only after that, design a production strategy that preserves existing Home Assistant VeSync config entries and entity IDs.
 
 The final goal is normal Home Assistant operation with VeSync 2FA enabled, without asking users to weaken account security or recreate their existing entities.
