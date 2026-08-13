@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from pathlib import Path
 import sys
 
 from pyvesync import VeSync
+from pyvesync.models.vesync_models import RequestGetTokenModel
 
 # Running a script by path puts the scripts directory, rather than the repository
 # root, first on sys.path. Add the root explicitly so this check imports the
@@ -46,6 +48,26 @@ def main() -> None:
         parse_auth_response,
     )
     from custom_components.vesync.session import restore_session, session_data
+
+    # This integration deliberately reuses pyvesync's pinned private second-stage
+    # token exchange instead of copying its cross-region logic. Fail CI if that
+    # contract changes.
+    contract_manager = VeSync("nobody@example.invalid", "not-a-real-password")
+    exchange = getattr(contract_manager.auth, "_exchange_authorization_code", None)
+    assert callable(exchange)
+    exchange_parameters = tuple(inspect.signature(exchange).parameters)
+    assert exchange_parameters == ("auth_code", "region_change_token")
+
+    # Verify that the pinned request model still hashes the supplied password
+    # before serialization; our MFA discovery layer intentionally delegates that
+    # detail to pyvesync rather than reproducing it.
+    request = RequestGetTokenModel(
+        email="nobody@example.invalid",
+        method="authByPWDOrOTM",
+        password="plain-test-password",
+    ).to_dict()
+    assert request["password"] != "plain-test-password"
+    assert len(request["password"]) == 32
 
     source = VeSync("nobody@example.invalid", "not-a-real-password")
     source.set_credentials(
@@ -131,6 +153,7 @@ def main() -> None:
     assert isinstance(challenge_with_success_code, VeSyncMFAChallenge)
 
     print("Home Assistant module imports: OK")
+    print("Pinned pyvesync auth contract: OK")
     print("pyvesync session save/restore round trip: OK")
     print("VeSync MFA challenge parsing/redaction: OK")
 
