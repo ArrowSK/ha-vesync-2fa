@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1 — 2026-08-14
+
+Field fix for upgrading an existing Home Assistant Core VeSync entry to the production same-domain 2FA component.
+
+- Fixes a false `wrong_account` abort after VeSync MFA had already succeeded and returned a valid session for the same configured email address.
+- Keeps the strongest identity checks first: the existing config-entry unique ID or already-stored VeSync account ID must match when available.
+- Adds a migration-safe fallback for older Core-created entries that do not yet contain the new persisted VeSync account/session fields: if the successfully authenticated username matches the username already stored in that exact reauth entry, the entry is accepted and its unique ID is normalized to the confirmed VeSync account ID.
+- Still rejects a genuinely different username/account during reauthentication.
+- Adds runtime tests for current-ID, stored-session-ID, legacy-same-username and different-account cases.
+- Does not recreate the VeSync config entry, device or entity registry records.
+
 ## 1.0.0 — 2026-08-14
 
 Production VeSync 2FA support after the authentication and normal-device-session paths were proven end to end from Home Assistant.
