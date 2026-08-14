@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.0 — 2026-08-14
+
+Exact MFA protocol implementation based on a browser HAR captured from VeSync's own account website.
+
+- Replaces the active 15-way OTP guessing ladder with VeSync's confirmed MFA endpoint: `/globalPlatform/api/accountAuth/v1/authBy2fa`.
+- Reproduces the account-web request wrapper with separate `context` and `data` objects.
+- Uses the confirmed authenticator payload fields `mfaMethod=otp`, `bizToken`, and `otpCode`.
+- Performs the normal `loginByAuthorizeCode4Vesync` exchange automatically when `authBy2fa` returns an `authorizeCode`.
+- Tries the globally hosted account API first because that is what the live VeSync website used for the tested Hungarian account; EU is a single bounded fallback when appropriate.
+- Keeps the HAR itself out of the repository because it contains account identifiers and short-lived authentication material.
+- Adds a manually validated numeric-OTP check without reintroducing the unsupported `vol.Match` frontend-schema problem.
+- Keeps the built-in Home Assistant VeSync integration completely untouched.
+
+The official web bundle also confirmed VeSync's MFA field mapping: `email` → `emailCode`, `otp` → `otpCode`, and `backupCode` → `backupCode`. The bundle exposes a separate trusted-device endpoint as well; 0.8.0 does not call it.
+
+## 0.7.1 — 2026-08-13
+
+Home Assistant frontend schema compatibility fix.
+
+- Replaces the non-serializable `vol.Match` OTP validator that caused a generic 500 before the config flow could render.
+- Adds a CI smoke test that serializes the initial Home Assistant config-flow schema so this class of frontend failure is caught automatically.
+
 ## 0.7.0 — 2026-08-13
 
 Single-pass MFA discovery after the 0.6 multi-step form failed in a real Home Assistant frontend.
