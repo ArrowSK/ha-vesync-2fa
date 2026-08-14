@@ -119,6 +119,20 @@ class VeSyncFlowHandler(ConfigFlow, domain=DOMAIN):
         self._pending_password = password
         self._pending_reauth = reauth
 
+    @staticmethod
+    def _same_reauth_account(entry, *, username: str, account_id: str) -> bool:
+        """Accept the confirmed account ID or a legacy entry tied to the same username."""
+        if entry.unique_id is not None and str(entry.unique_id) == account_id:
+            return True
+        stored_account_id = entry.data.get(CONF_ACCOUNT_ID)
+        if stored_account_id is not None and str(stored_account_id) == account_id:
+            return True
+        stored_username = entry.data.get(CONF_USERNAME)
+        return (
+            isinstance(stored_username, str)
+            and stored_username.strip().casefold() == username.strip().casefold()
+        )
+
     async def _finish_login(
         self,
         *,
@@ -135,9 +149,13 @@ class VeSyncFlowHandler(ConfigFlow, domain=DOMAIN):
             **session_data,
         }
         if reauth:
-            self._abort_if_unique_id_mismatch(reason="wrong_account")
+            entry = self._get_reauth_entry()
+            if not self._same_reauth_account(
+                entry, username=username, account_id=account_id
+            ):
+                return self.async_abort(reason="wrong_account")
             return self.async_update_reload_and_abort(
-                self._get_reauth_entry(),
+                entry,
                 unique_id=account_id,
                 data_updates=data,
             )
