@@ -28,3 +28,5 @@ jobs:
         run: python scripts/runtime_smoke.py
       - name: Serialize initial config-flow form
         run: python scripts/schema_smoke.py
+      - name: Verify HAR-confirmed MFA protocol shape
+        run: python scripts/exact_flow_smoke.py
