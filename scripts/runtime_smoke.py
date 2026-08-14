@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the isolated probe against the pinned Home Assistant runtime."""
+"""Smoke-test the historical probe against the pinned Home Assistant runtime."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 
 def main() -> None:
-    """Import both integrations and verify probe/redaction invariants."""
+    """Import Core/probe modules and verify probe/redaction invariants."""
     core_vesync = importlib.import_module("homeassistant.components.vesync")
     probe = importlib.import_module("custom_components.vesync_2fa_probe")
     importlib.import_module("custom_components.vesync_2fa_probe.config_flow")
@@ -26,7 +26,10 @@ def main() -> None:
     assert core_vesync.DOMAIN == "vesync"
     assert DOMAIN == "vesync_2fa_probe"
     assert DOMAIN != core_vesync.DOMAIN
-    assert not (ROOT / "custom_components" / "vesync").exists()
+    # The final repository deliberately contains a separate production
+    # custom_components/vesync layer. This smoke test remains scoped only to the
+    # historical diagnostic domain and must not assume that package is absent.
+    assert (ROOT / "custom_components" / "vesync_2fa_probe").exists()
 
     request = RequestGetTokenModel(
         email="nobody@example.invalid",
@@ -77,9 +80,6 @@ def main() -> None:
     assert mfa.has_authorize_code is False
     mfa_safe = mfa.safe_summary
 
-    # Confirmed by a real, redacted VeSync 2FA field test on 2026-08-13.
-    # Values below contain protocol structure only; no account data or token
-    # values from the live response are retained in the repository.
     confirmed_field_shape = auth.parse_probe_response(
         {
             "code": -11257129,
@@ -158,7 +158,7 @@ def main() -> None:
     assert "authorize_code=no" in mfa_safe
 
     print("Home Assistant Core VeSync import: OK")
-    print("Isolated probe import/domain: OK")
+    print("Historical probe import/domain: OK")
     print("Pinned pyvesync request model: OK")
     print("MFA response classification: OK")
     print("Confirmed live MFA challenge shape: OK")
