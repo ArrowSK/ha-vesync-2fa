@@ -1,118 +1,127 @@
-# VeSync 2FA Probe for Home Assistant
+# VeSync 2FA for Home Assistant
 
-`ha-vesync-2fa` is an isolated Home Assistant diagnostic integration for VeSync accounts protected by two-factor authentication.
+`ha-vesync-2fa` adds authenticator-based two-factor authentication to Home Assistant's VeSync integration while deliberately keeping the existing Home Assistant device and entity model intact.
 
-It is **not** a replacement for Home Assistant's built-in **VeSync** integration. The probe uses its own domain, `vesync_2fa_probe`, so the existing Home Assistant VeSync config entry, devices and entities stay untouched.
+Version 1.0.0 is the production build. The earlier `vesync_2fa_probe` component remains in the repository as a diagnostic/research record, but normal use is through the `vesync` integration supplied by `custom_components/vesync`.
 
-## Current status — 0.9.0
+## What has been proven
 
-The authentication protocol is now proven end to end from Home Assistant.
+The current VeSync account-level MFA flow was captured from VeSync's own account website and then reproduced from Home Assistant.
 
-A browser HAR captured from VeSync's own `account.vesync.com` sign-in flow confirmed the missing MFA request:
-
-```text
-POST /globalPlatform/api/accountAuth/v1/authBy2fa
-```
-
-For the authenticator method the flow is:
+The working sequence is:
 
 ```text
 password authentication
   -> MFA challenge + bizToken
-  -> authBy2fa(mfaMethod=otp, bizToken, otpCode)
+  -> POST /globalPlatform/api/accountAuth/v1/authBy2fa
+       mfaMethod=otp
+       bizToken=<challenge token>
+       otpCode=<current authenticator code>
   -> authorizeCode
-  -> loginByAuthorizeCode4Vesync
+  -> POST /user/api/accountManage/v1/loginByAuthorizeCode4Vesync
   -> session token
 ```
 
-A live Home Assistant 0.8.0 run confirmed every stage: the password request returned VeSync's `-11257129` MFA challenge, `authBy2fa` returned an `authorizeCode`, and the normal token exchange returned a session token.
+A live Home Assistant test confirmed all three stages: the password request returned the known `-11257129` MFA challenge, `authBy2fa` returned an `authorizeCode`, and the standard VeSync token exchange returned a session token.
 
-The HAR itself contained account identifiers and short-lived authentication material, so it is deliberately **not** committed to this repository. Only the sanitized protocol shape is retained.
+A second live test then injected that MFA-issued token into `pyvesync` through `VeSync.set_credentials()` and performed the normal read-only `get_devices()` call. Device discovery succeeded and returned the expected single device. This proves the MFA session is usable by the normal `pyvesync` device stack, rather than being a web-only session.
 
-## What 0.9.0 adds
+The HAR used during protocol discovery is not stored in this repository because it contained account identifiers and short-lived authentication material.
 
-0.9.0 keeps the exact 0.8 authentication flow and adds one read-only compatibility check after a token is issued.
+## What 1.0.0 changes
 
-The same run:
+The production component deliberately uses the normal Home Assistant domain, `vesync`. This is necessary to operate on the existing VeSync config entry and registry identities instead of creating a second set of devices and entities.
 
-1. performs the confirmed password -> `authBy2fa` -> authorize-code -> token flow;
-2. creates a fresh `pyvesync` manager with blank username/password fields;
-3. injects only the returned session token/account context through `VeSync.set_credentials()`;
-4. performs the normal read-only `get_devices()` request;
-5. if exactly one Home Assistant Core VeSync config entry is already loaded, compares the in-memory device identity set returned by the new session with the identity set used by the working Core integration;
-6. reports only counts and a yes/no identity match.
+The change is intentionally narrow:
 
-This is specifically intended to answer the last question before designing a production integration: does a session obtained through the real MFA flow behave like a normal `pyvesync` session and resolve the same devices as the existing Home Assistant integration?
+- Home Assistant's existing VeSync entity platforms are imported from Core unchanged: fan, sensor, binary sensor, humidifier, light, number, select, switch and update.
+- The Core VeSync config-entry version and minor version are retained.
+- Core's existing entity-registry migration and device-removal guard are reused.
+- Only authentication, session restoration, session persistence and reauthentication behavior are extended.
 
-0.9.0 does **not** create or update Home Assistant config entries, entities, devices or registry records. It does not change the built-in VeSync manager.
+In particular, 1.0.0 does **not** invent new VeSync entity unique IDs or recreate devices. Existing automations, dashboards and integrations that refer to existing VeSync entity IDs should therefore continue to refer to the same registry entries.
+
+## Setup and reauthentication
+
+For an account without 2FA, setup still starts with the usual email and password and uses the normal `pyvesync` login path.
+
+For an account with authenticator-based 2FA:
+
+1. Home Assistant first submits the normal username/password login.
+2. If VeSync responds that 2FA is required, Home Assistant shows a separate local authenticator-code form.
+3. The current code is sent once through the confirmed `authBy2fa` flow.
+4. The resulting VeSync session token, account ID, country and current region are saved in the existing Home Assistant config entry.
+5. The authenticator code itself is discarded and is never saved.
+
+At startup, a stored VeSync session is restored directly with `VeSync.set_credentials()` instead of unnecessarily repeating MFA.
+
+If VeSync later invalidates the session and `pyvesync` can no longer refresh it, the coordinator raises Home Assistant's normal `ConfigEntryAuthFailed` signal. Home Assistant then opens the reauthentication flow. The same config entry is updated and reloaded after successful MFA; it is not deleted and recreated.
+
+## Existing VeSync installations
+
+The production design is specifically intended for an already-configured Home Assistant VeSync account.
+
+When upgrading from the diagnostic releases:
+
+1. Update this HACS repository to 1.0.0.
+2. Restart Home Assistant.
+3. **Do not delete the existing VeSync integration, device or entities.**
+4. If Home Assistant asks the existing VeSync entry to reauthenticate, enter the account credentials there.
+5. When VeSync requires the second factor, enter a fresh authenticator code in Home Assistant.
+
+The existing config entry remains the ownership anchor for the VeSync entities. The new session fields are added to that entry during successful authentication.
+
+Because `custom_components/vesync` has the same domain as Home Assistant Core's built-in integration, the custom component intentionally takes precedence while installed. If native 2FA support later lands in Home Assistant/`pyvesync`, remove this custom component and restart Home Assistant to return to Core. Do not delete the VeSync config entry merely to remove the custom code.
 
 ## Security model
 
-Email, password and authenticator code are entered only in the local Home Assistant config flow.
+Passwords and authenticator codes are entered only in Home Assistant's local config flow.
 
-The password is MD5-hashed before the account-web authentication request, matching VeSync's current clients. Passwords, password hashes, OTPs, account IDs, device identifiers, `bizToken` values, `authorizeCode` values and session tokens are kept only in memory for the running flow and are never included in the safe result.
+The password is MD5-hashed before the account-web authentication request, matching VeSync's current client protocol. The one-time authenticator code, MFA challenge token and intermediate `authorizeCode` exist only in memory during authentication.
 
-For the 0.9 session check, the fresh `pyvesync` manager is constructed with blank username/password values and receives only the already-issued session credentials through `set_credentials()`.
+Home Assistant persists only the information required to restore the VeSync cloud session:
 
-No persistent Home Assistant config entry is created. No authentication material is written to logs or files by the integration.
+- session token;
+- VeSync account ID;
+- account country;
+- current VeSync API region;
+- the existing username/password fields already used by the Core integration.
 
-The result screen contains only sanitized protocol metadata plus:
+The OTP, `bizToken` and `authorizeCode` are not persisted. The integration does not log raw authentication responses or secret values.
 
-- whether the normal `pyvesync` device-list call succeeded;
-- number of devices discovered by that temporary session;
-- number of existing Core VeSync config entries;
-- whether one Core manager is currently loaded;
-- its device count when available;
-- whether the two in-memory device identity sets match.
+Do not publish passwords, authenticator codes, HAR files, cookies, authorization headers, account IDs, device CIDs/MACs, `bizToken` values, `authorizeCode` values or session tokens when reporting problems.
 
-Do not post HAR files, passwords, OTPs, raw VeSync responses, cookies, authorization headers, account IDs, device CIDs/MACs, `bizToken` values, authorization codes or session tokens in GitHub issues.
+## Compatibility
 
-## Installation and testing
+Version 1.0.0 is built and tested against:
 
-1. Add `https://github.com/ArrowSK/ha-vesync-2fa` to HACS as a custom **Integration** repository if it is not already installed.
-2. Update **VeSync 2FA Probe** to 0.9.0.
-3. Restart Home Assistant.
-4. Leave the existing built-in **VeSync** integration alone.
-5. Go to **Settings -> Devices & services -> Add integration -> VeSync 2FA Probe**.
-6. Enter the VeSync email and password, a fresh current authenticator code, the account country code, and the VeSync API region.
-7. Submit once.
-8. Copy only the safe metadata shown on the final screen.
+- Home Assistant Core 2026.8.0;
+- `pyvesync==3.4.2`.
 
-The probe intentionally finishes without creating a persistent Home Assistant config entry.
+The production compatibility layer imports the Core 2026.8 VeSync platforms rather than copying their entity implementations. This keeps normal device behavior aligned with the Home Assistant version for which this release is validated.
 
-## Isolation from Home Assistant Core VeSync
+CI checks include repository validation, Python compilation, Hassfest, HACS validation, Home Assistant runtime imports, frontend schema serialization, the captured MFA protocol shape, `pyvesync` session hydration, and the production same-domain compatibility layer.
 
-The diagnostic package uses `vesync_2fa_probe`, not `vesync`. It does not create VeSync entities and does not replace Home Assistant Core's integration.
+## Why upstreaming should happen in two places
 
-This separation is deliberate. An earlier same-domain experiment temporarily masked the working built-in VeSync connection while installed. Removing that custom component and restarting Home Assistant restored the original connection, confirming that production changes must preserve Core behavior and registry identity rather than casually replacing another layer.
+The long-term solution belongs upstream rather than in a permanent same-domain custom override.
 
-## Compatibility and validation
+`pyvesync` already has an open 2FA enhancement, issue `webdjoe/pyvesync#367`. A Home Assistant VeSync maintainer noted there that once the library supports 2FA, the Home Assistant device flow can be updated as well.
 
-The project is validated against Home Assistant Core 2026.8.0 and `pyvesync==3.4.2`.
+Home Assistant also has the open integration issue `home-assistant/core#153551`, which documents the current failure when a VeSync account requires 2FA.
 
-CI runs structural checks, Python compilation, Hassfest, HACS validation, a Home Assistant runtime smoke test, and initial config-flow schema serialization. The 0.9 checks additionally require that:
+The protocol findings from this project are suitable for both discussions. The clean upstream implementation would normally be:
 
-- the active flow remains on the isolated `vesync_2fa_probe` domain;
-- the exact HAR-confirmed MFA implementation remains active;
-- session validation uses `VeSync.set_credentials()` and the normal read-only `get_devices()` path;
-- the temporary session manager receives blank username/password fields;
-- Core comparison is read-only and uses in-memory device identities only;
-- no config-entry, entity-registry or platform mutation API is used by the validation step;
-- no HAR file is committed;
-- strings and English translations remain synchronized.
+1. add the confirmed MFA challenge/verification support to `pyvesync`;
+2. expose an MFA-aware API from the library;
+3. add the corresponding setup and reauthentication steps to Home Assistant Core;
+4. once released, retire this custom same-domain layer without recreating users' entities.
 
-## Roadmap
+## Diagnostic history
 
-1. **Complete:** capture the real first-stage MFA challenge.
-2. **Complete:** eliminate guessed continuation shapes.
-3. **Complete:** capture the official web `authBy2fa` request.
-4. **Complete:** verify `authBy2fa -> authorizeCode -> VeSync session token` end to end from Home Assistant.
-5. **Current:** verify that the MFA-issued session works through normal `pyvesync` device discovery and resolves the same devices as the loaded Core integration.
-6. Build a production reauthentication/session-persistence design that preserves the existing Home Assistant VeSync config entry and entity IDs.
-7. Regression-test that production design against Home Assistant Core 2026.8 behavior before replacing any working layer.
-8. Upstream the protocol work to `pyvesync` and Home Assistant where practical.
+The repository includes the earlier isolated `vesync_2fa_probe` component because it documents how the protocol was established safely. That component uses a different domain and does not create persistent VeSync entities. It is no longer required for normal operation once 1.0.0 is installed.
 
-The final goal is normal Home Assistant operation with VeSync 2FA enabled, without disabling MFA or recreating existing entities.
+The discovery sequence was intentionally conservative: first capture the MFA challenge, then eliminate incorrect request shapes, then capture the official website flow, then prove token issuance, and finally prove that the token works with normal `pyvesync` device discovery before touching the production `vesync` domain.
 
 ## Attribution
 
