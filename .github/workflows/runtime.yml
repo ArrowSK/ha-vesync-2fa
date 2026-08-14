@@ -30,3 +30,5 @@ jobs:
         run: python scripts/schema_smoke.py
       - name: Verify HAR-confirmed MFA protocol shape
         run: python scripts/exact_flow_smoke.py
+      - name: Verify read-only pyvesync session validation
+        run: python scripts/session_validation_smoke.py
