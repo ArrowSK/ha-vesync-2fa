@@ -4,7 +4,8 @@
       "probe_complete": "Probe finished. {outcome}. Safe metadata: {details}. No VeSync configuration entry was created or changed."
     },
     "error": {
-      "cannot_connect": "The probe could not obtain a usable response from VeSync. Check the account details, country/API region and network connection, then try again."
+      "cannot_connect": "The probe could not obtain a usable response from VeSync. Check the account details, country/API region and network connection, then try again.",
+      "invalid_otp": "Enter the current numeric authenticator code."
     },
     "step": {
       "result": {
@@ -26,8 +27,8 @@
           "password": "Used only inside this diagnostic run. Plaintext is not stored by the probe.",
           "username": "Email address used by the VeSync account. It is not stored by the probe."
         },
-        "description": "Version 0.7 uses a single form to avoid the multi-step form error seen in 0.6. Enter all five values once. After VeSync returns the MFA challenge, the probe automatically tries up to 15 bounded OTP request shapes using only VeSync's two already-known authentication endpoints. It stops immediately on success, rate limiting, account lock, or an explicit invalid/expired-code response. The built-in VeSync integration is not changed.",
-        "title": "Run VeSync 2FA single-pass probe"
+        "description": "Version 0.8 replaces protocol guessing with the MFA flow confirmed from the official VeSync account website: password authentication, authBy2fa using the returned bizToken and otpCode, then the normal VeSync authorize-code token exchange. The built-in VeSync integration is not changed.",
+        "title": "Run VeSync 2FA exact-flow probe"
       }
     }
   }
