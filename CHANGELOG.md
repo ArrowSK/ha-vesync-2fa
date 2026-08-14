@@ -5,6 +5,8 @@
 Production VeSync 2FA support after the authentication and normal-device-session paths were proven end to end from Home Assistant.
 
 - Adds the production `custom_components/vesync` compatibility layer using the same `vesync` domain as Home Assistant Core so existing config entries, device registry records, entity registry records and entity IDs remain the ownership anchor.
+- Ships exactly one HACS integration domain, `vesync`. The historical `vesync_2fa_probe` source remains in Git history but is no longer included in the installable `custom_components` tree.
+- Documents the required HACS migration for 0.x probe users: uninstall the old probe/repository record, keep the existing Home Assistant VeSync config entry and entities, re-add this repository so HACS detects the production `vesync` domain, then install 1.0.0.
 - Keeps Home Assistant Core 2026.8.0's VeSync entity platforms unchanged by delegating fan, sensor, binary sensor, humidifier, light, number, select, switch and update setup directly to Core.
 - Retains Core's config-flow version/minor version, entity-registry migration and device-removal guard.
 - Adds the confirmed authenticator flow: password authentication -> `authBy2fa(mfaMethod=otp, bizToken, otpCode)` -> `authorizeCode` -> `loginByAuthorizeCode4Vesync` -> session token.
@@ -14,7 +16,7 @@ Production VeSync 2FA support after the authentication and normal-device-session
 - Adds setup and reauthentication MFA steps. Reauthentication updates/reloads the existing config entry rather than deleting and recreating it, and rejects a different account ID.
 - Extends the Core coordinator only to persist refreshed session credentials and surface an expired/failed authentication session as Home Assistant `ConfigEntryAuthFailed`, causing the normal reauthentication UI to appear.
 - Records the final 0.9 field result: an MFA-issued session successfully hydrated `pyvesync` through `set_credentials()` and the ordinary read-only `get_devices()` call succeeded with the expected device count.
-- Adds production runtime/schema validation while keeping the historical `vesync_2fa_probe` component available as a research record.
+- Adds production runtime/schema validation and checks that the HACS package exposes only the production domain and contains no HAR/token material.
 
 The long-term target is upstream support in `pyvesync` and Home Assistant Core. Once native support ships, the custom same-domain layer should be removed without deleting the existing VeSync config entry.
 
