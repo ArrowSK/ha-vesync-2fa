@@ -10,7 +10,6 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENTS = ROOT / "custom_components"
 PRODUCTION = COMPONENTS / "vesync"
-PROBE = COMPONENTS / "vesync_2fa_probe"
 
 
 def fail(message: str) -> None:
@@ -28,8 +27,15 @@ def load_json(path: Path) -> dict:
 def main() -> None:
     if not PRODUCTION.is_dir():
         fail("production custom_components/vesync package is missing")
-    if not PROBE.is_dir():
-        fail("historical isolated probe package is missing")
+
+    manifest_domains = sorted(
+        path.parent.name for path in COMPONENTS.glob("*/manifest.json")
+    )
+    if manifest_domains != ["vesync"]:
+        fail(
+            "production HACS package must expose exactly one integration domain "
+            f"(vesync); found {manifest_domains}"
+        )
 
     manifest = load_json(PRODUCTION / "manifest.json")
     strings = load_json(PRODUCTION / "strings.json")
@@ -101,7 +107,10 @@ def main() -> None:
         if marker not in mfa_text:
             fail(f"confirmed MFA protocol marker missing: {marker}")
 
-    if "ConfigEntryAuthFailed" not in coordinator_text or "manager.enabled" not in coordinator_text:
+    if (
+        "ConfigEntryAuthFailed" not in coordinator_text
+        or "manager.enabled" not in coordinator_text
+    ):
         fail("coordinator must surface expired MFA sessions to Home Assistant reauth")
 
     component_text = "\n".join(
@@ -115,6 +124,7 @@ def main() -> None:
     if jwt_header_marker in component_text:
         fail("custom components appear to contain JWT/token material")
 
+    print("Single HACS integration domain (vesync): OK")
     print("Production vesync domain preserved: OK")
     print("Core platform behavior delegated unchanged: OK")
     print("Session persistence and registry-preserving setup: OK")
