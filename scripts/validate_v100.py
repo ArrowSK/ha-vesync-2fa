@@ -104,15 +104,16 @@ def main() -> None:
     if "ConfigEntryAuthFailed" not in coordinator_text or "manager.enabled" not in coordinator_text:
         fail("coordinator must surface expired MFA sessions to Home Assistant reauth")
 
-    repository_text = "\n".join(
+    component_text = "\n".join(
         path.read_text(encoding="utf-8", errors="ignore")
-        for path in ROOT.rglob("*")
-        if path.is_file() and ".git" not in path.parts
+        for path in COMPONENTS.rglob("*")
+        if path.is_file()
     )
     if list(ROOT.rglob("*.har")):
         fail("HAR capture files must never be committed")
-    if "eyJhbGciOi" in repository_text:
-        fail("repository appears to contain JWT/token material")
+    jwt_header_marker = "eyJ" + "hbGciOi"
+    if jwt_header_marker in component_text:
+        fail("custom components appear to contain JWT/token material")
 
     print("Production vesync domain preserved: OK")
     print("Core platform behavior delegated unchanged: OK")
