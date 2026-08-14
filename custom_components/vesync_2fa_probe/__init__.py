@@ -1,9 +1,9 @@
 """Non-invasive VeSync MFA protocol probe.
 
 This integration intentionally does not replace Home Assistant's built-in
-``vesync`` integration. It exists only to inspect the first VeSync
-password-authentication response and expose a redacted summary of an MFA
-challenge.
+``vesync`` integration. It runs the separately confirmed account-level MFA
+flow, reduces responses to public-safe metadata, and creates no persistent
+config entry, entity or device.
 """
 
 from homeassistant.core import HomeAssistant
