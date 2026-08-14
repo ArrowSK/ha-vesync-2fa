@@ -9,7 +9,7 @@
     },
     "step": {
       "result": {
-        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe output contains only sanitized protocol metadata. Passwords, authenticator codes, account IDs, bizToken values, authorizeCode values, session tokens and raw VeSync responses are never included. Copy only these safe metadata lines.",
+        "description": "{outcome}.\n\nSafe metadata:\n`{details}`\n\nThe output contains only sanitized protocol and compatibility metadata. Passwords, authenticator codes, account IDs, device identifiers, bizToken values, authorizeCode values, session tokens and raw VeSync responses are never included. Copy only these safe metadata lines.",
         "title": "VeSync authentication probe result"
       },
       "user": {
@@ -27,8 +27,8 @@
           "password": "Used only inside this diagnostic run. Plaintext is not stored by the probe.",
           "username": "Email address used by the VeSync account. It is not stored by the probe."
         },
-        "description": "Version 0.8 replaces protocol guessing with the MFA flow confirmed from the official VeSync account website: password authentication, authBy2fa using the returned bizToken and otpCode, then the normal VeSync authorize-code token exchange. The built-in VeSync integration is not changed.",
-        "title": "Run VeSync 2FA exact-flow probe"
+        "description": "Version 0.9 runs the now-confirmed VeSync MFA flow. If VeSync returns a session token, the same run hydrates a fresh pyvesync manager with that token, performs one read-only device-list request, and compares the discovered device identity set with the already loaded Home Assistant Core VeSync manager when exactly one is available. The built-in VeSync integration, its config entry, devices, entities and registry are not changed.",
+        "title": "Run VeSync 2FA session-compatibility probe"
       }
     }
   }
