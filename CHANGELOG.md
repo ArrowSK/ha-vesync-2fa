@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.0 — 2026-08-14
+
+Production VeSync 2FA support after the authentication and normal-device-session paths were proven end to end from Home Assistant.
+
+- Adds the production `custom_components/vesync` compatibility layer using the same `vesync` domain as Home Assistant Core so existing config entries, device registry records, entity registry records and entity IDs remain the ownership anchor.
+- Keeps Home Assistant Core 2026.8.0's VeSync entity platforms unchanged by delegating fan, sensor, binary sensor, humidifier, light, number, select, switch and update setup directly to Core.
+- Retains Core's config-flow version/minor version, entity-registry migration and device-removal guard.
+- Adds the confirmed authenticator flow: password authentication -> `authBy2fa(mfaMethod=otp, bizToken, otpCode)` -> `authorizeCode` -> `loginByAuthorizeCode4Vesync` -> session token.
+- Stores the resulting session token, account ID, account country and API region in the existing Home Assistant config entry; OTP, `bizToken` and `authorizeCode` are never persisted.
+- Restores stored sessions with `VeSync.set_credentials()` on startup, avoiding unnecessary MFA prompts while a session remains valid.
+- Preserves normal username/password login for accounts that do not require MFA and persists the resulting normal `pyvesync` session as well.
+- Adds setup and reauthentication MFA steps. Reauthentication updates/reloads the existing config entry rather than deleting and recreating it, and rejects a different account ID.
+- Extends the Core coordinator only to persist refreshed session credentials and surface an expired/failed authentication session as Home Assistant `ConfigEntryAuthFailed`, causing the normal reauthentication UI to appear.
+- Records the final 0.9 field result: an MFA-issued session successfully hydrated `pyvesync` through `set_credentials()` and the ordinary read-only `get_devices()` call succeeded with the expected device count.
+- Adds production runtime/schema validation while keeping the historical `vesync_2fa_probe` component available as a research record.
+
+The long-term target is upstream support in `pyvesync` and Home Assistant Core. Once native support ships, the custom same-domain layer should be removed without deleting the existing VeSync config entry.
+
 ## 0.9.0 — 2026-08-14
 
 Read-only session compatibility validation after the exact MFA flow succeeded in Home Assistant.
