@@ -2,7 +2,7 @@
 
 `ha-vesync-2fa` adds authenticator-based two-factor authentication to Home Assistant's VeSync integration while keeping Home Assistant's existing VeSync device and entity model intact.
 
-Version 1.0.0 is the production release. The installable HACS package now exposes exactly one integration, `custom_components/vesync`. The earlier isolated probe is preserved in Git history rather than shipped alongside the production integration, so HACS has an unambiguous integration domain.
+Version 1.0.1 is the current production release. The installable HACS package exposes exactly one integration, `custom_components/vesync`. The earlier isolated probe is preserved in Git history rather than shipped alongside the production integration, so HACS has an unambiguous integration domain.
 
 ## What has been proven
 
@@ -28,7 +28,7 @@ A second live test injected that MFA-issued token into `pyvesync` through `VeSyn
 
 The HAR used during protocol discovery is not stored in this repository because it contained account identifiers and short-lived authentication material.
 
-## What 1.0.0 changes
+## What the production build changes
 
 The production component deliberately uses Home Assistant's normal `vesync` domain. That allows it to operate on an existing VeSync config entry and its registry identities instead of creating a parallel integration with duplicate entities.
 
@@ -39,7 +39,7 @@ The change is intentionally narrow:
 - Core's existing entity-registry migration and device-removal guard are reused.
 - Only authentication, session restoration, session persistence and reauthentication behavior are extended.
 
-Version 1.0.0 does not define replacement entity unique IDs. Existing automations, dashboards and integrations therefore continue to use the existing VeSync registry entries rather than a newly created set.
+The production component does not define replacement entity unique IDs. Existing automations, dashboards and integrations therefore continue to use the existing VeSync registry entries rather than a newly created set.
 
 ## Setup and reauthentication
 
@@ -57,9 +57,17 @@ At startup, a stored VeSync session is restored directly with `VeSync.set_creden
 
 If VeSync later invalidates the session and `pyvesync` can no longer refresh it, the coordinator raises Home Assistant's normal `ConfigEntryAuthFailed` signal. Home Assistant then starts reauthentication. Successful MFA updates and reloads the same config entry; it does not delete and recreate it.
 
+### Existing Core entries and the 1.0.1 fix
+
+Some older Core-created VeSync entries can reach successful MFA and still have a legacy config-entry unique ID that does not equal the account ID returned by the current VeSync token exchange. Version 1.0.0 treated that as a different account and aborted after VeSync had already authenticated successfully.
+
+Version 1.0.1 keeps the account-safety guard but adds a migration-safe fallback for that specific case. Reauthentication is accepted when either the existing unique ID matches, an already-stored VeSync account ID matches, or the successfully authenticated username matches the username already stored in the exact config entry being reauthenticated. The entry is then normalized to the confirmed VeSync account ID. A genuinely different stored username/account is still rejected.
+
+This migration updates the existing config entry in place and does not recreate the VeSync device or entity registry records.
+
 ## Important upgrade note for users of the 0.x probe
 
-The diagnostic releases were installed by HACS under the separate domain `vesync_2fa_probe`. Version 1.0.0 intentionally changes the installable domain to `vesync`. HACS remembers the domain/path of an already-added custom integration, so the old probe should not be treated as an ordinary in-place update.
+The diagnostic releases were installed by HACS under the separate domain `vesync_2fa_probe`. The production release intentionally changes the installable domain to `vesync`. HACS remembers the domain/path of an already-added custom integration, so the old probe should not be treated as an ordinary in-place update.
 
 Use this migration instead:
 
@@ -67,7 +75,7 @@ Use this migration instead:
 2. Restart Home Assistant.
 3. Do **not** delete the existing **VeSync** entry under **Settings → Devices & services**, and do not delete its device or entities.
 4. In HACS, remove the old custom repository entry if it is still recorded, then add `https://github.com/ArrowSK/ha-vesync-2fa` again as an **Integration** repository. HACS will now detect the single production domain, `vesync`.
-5. Install **VeSync 2FA** 1.0.0 and restart Home Assistant.
+5. Install **VeSync 2FA** 1.0.1 and restart Home Assistant.
 6. If the existing VeSync entry requires reauthentication, enter the account credentials there and then the current authenticator code when prompted.
 
 The config entry under Home Assistant's Devices & services is separate from the old HACS probe installation. Preserving that config entry is what preserves the ownership link to the existing VeSync entities.
@@ -94,14 +102,16 @@ Do not publish passwords, authenticator codes, HAR files, cookies, authorization
 
 ## Compatibility and validation
 
-Version 1.0.0 is built and tested against:
+Version 1.0.1 is built and tested against:
 
-- Home Assistant Core 2026.8.0;
+- Home Assistant Core 2026.8.1;
 - `pyvesync==3.4.2`.
+
+Home Assistant Core 2026.8.1 still pins `pyvesync==3.4.2`, matching this custom integration.
 
 The production compatibility layer imports the Core 2026.8 VeSync platforms instead of copying their entity implementations. This keeps normal device behavior aligned with the Home Assistant version for which this release is validated.
 
-CI checks repository structure, Python compilation, Hassfest, HACS validation, Home Assistant runtime imports, config-flow schema serialization, the confirmed MFA protocol markers, session persistence invariants and the production same-domain compatibility layer. The repository is also checked to expose only the single `vesync` integration to HACS and to contain no HAR or captured token material.
+CI checks repository structure, Python compilation, Hassfest, HACS validation, Home Assistant runtime imports, config-flow schema serialization, the confirmed MFA protocol markers, session persistence invariants, legacy reauthentication identity migration and the production same-domain compatibility layer. The repository is also checked to expose only the single `vesync` integration to HACS and to contain no HAR or captured token material.
 
 ## Upstream status
 
