@@ -55,7 +55,7 @@ def main() -> None:
     )
     stored_session = SimpleNamespace(
         unique_id="legacy-value",
-        data={"username": "old@example.com", "vesync_account_id": "67890"},
+        data={"username": "old@example.com", "account_id": "67890"},
     )
     assert flow._same_reauth_account(
         stored_session, username="old@example.com", account_id="67890"
