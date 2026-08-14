@@ -32,7 +32,7 @@ def main() -> None:
         (ROOT / "custom_components" / "vesync" / "manifest.json").read_text()
     )
     assert manifest["domain"] == "vesync"
-    assert manifest["version"] == "1.0.0"
+    assert manifest["version"] == "1.0.1"
     assert integration.PLATFORMS
     assert mfa.region_for_country("HU") == "EU"
     assert mfa.region_for_country("US") == "US"
@@ -49,10 +49,35 @@ def main() -> None:
     assert len(serialized_user) == 2
     assert len(serialized_mfa) == 2
 
+    current = SimpleNamespace(unique_id="12345", data={"username": "same@example.com"})
+    assert flow._same_reauth_account(
+        current, username="same@example.com", account_id="12345"
+    )
+    stored_session = SimpleNamespace(
+        unique_id="legacy-value",
+        data={"username": "old@example.com", "vesync_account_id": "67890"},
+    )
+    assert flow._same_reauth_account(
+        stored_session, username="old@example.com", account_id="67890"
+    )
+    legacy_username = SimpleNamespace(
+        unique_id="legacy-value", data={"username": "User@Example.com"}
+    )
+    assert flow._same_reauth_account(
+        legacy_username, username=" user@example.com ", account_id="99999"
+    )
+    different = SimpleNamespace(
+        unique_id="legacy-value", data={"username": "other@example.com"}
+    )
+    assert not flow._same_reauth_account(
+        different, username="user@example.com", account_id="99999"
+    )
+
     print("Production VeSync override import: OK")
     print("Core platform proxy imports: OK")
     print("MFA region/error helpers: OK")
     print("User and MFA form serialization: OK")
+    print("Legacy reauth identity compatibility: OK")
 
 
 if __name__ == "__main__":
