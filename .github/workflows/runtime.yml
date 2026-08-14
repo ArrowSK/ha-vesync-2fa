@@ -23,6 +23,6 @@ jobs:
       - name: Install pinned Home Assistant and VeSync runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "homeassistant==2026.8.0" "pyvesync==3.4.2"
+          python -m pip install "homeassistant==2026.8.1" "pyvesync==3.4.2"
       - name: Verify production same-domain layer
         run: python scripts/production_smoke.py
