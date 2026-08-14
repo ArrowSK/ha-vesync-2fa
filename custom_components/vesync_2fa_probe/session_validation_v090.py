@@ -75,8 +75,6 @@ async def async_validate_session(
     *,
     session,
     exact_result: ExactFlowResult,
-    username: str,
-    password: str,
     country_code: str,
     api_region: str,
     time_zone: str,
@@ -96,9 +94,12 @@ async def async_validate_session(
         )
 
     region = "EU" if api_region == API_REGION_EU else "US"
+    # Username/password are deliberately blank here. The fresh manager is
+    # authenticated only with the session credentials returned by the exact MFA
+    # flow, so plaintext account credentials are not retained for this step.
     manager = VeSync(
-        username=username,
-        password=password,
+        username="",
+        password="",
         country_code=country_code,
         session=session,
         time_zone=time_zone,
