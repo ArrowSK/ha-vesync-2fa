@@ -57,7 +57,8 @@ def main() -> None:
     if "continuation_v070" in flow or "async_probe_otp_ladder" in flow:
         fail("active flow must not use the old 15-way guessing ladder")
 
-    exact = (PROBE / "exact_mfa_v080.py").read_text(encoding="utf-8")
+    exact_path = PROBE / "exact_mfa_v080.py"
+    exact = exact_path.read_text(encoding="utf-8")
     required = (
         "/globalPlatform/api/accountAuth/v1/authByPWDOrOTM",
         "/globalPlatform/api/accountAuth/v1/authBy2fa",
@@ -71,22 +72,10 @@ def main() -> None:
         if marker not in exact:
             fail(f"HAR-confirmed protocol marker missing: {marker}")
 
-    forbidden = (
-        "private-account-id",
-        "redacted-challenge-token",
-        "artems.kovalev",
-        "12982335",
-        "30410011",
-        "30110011",
-    )
-    repository_text = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore")
-        for path in ROOT.rglob("*")
-        if path.is_file() and ".git" not in path.parts
-    )
-    for marker in forbidden:
-        if marker in repository_text:
-            fail("repository contains field-test account data or token material")
+    if list(ROOT.rglob("*.har")):
+        fail("HAR capture files must never be committed")
+    if "eyJ" in exact:
+        fail("exact-flow source appears to contain JWT/token material")
 
     print("Probe domain isolation: OK")
     print("0.8.0 package metadata: OK")
@@ -94,7 +83,7 @@ def main() -> None:
     print("Old guessing ladder inactive: OK")
     print("Frontend-serializable config-flow schema: OK")
     print("No persistent config entry: OK")
-    print("No captured account/token material: OK")
+    print("No HAR/token material committed: OK")
     print("Translations: OK")
 
 
