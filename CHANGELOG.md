@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0 — 2026-08-14
+
+Read-only session compatibility validation after the exact MFA flow succeeded in Home Assistant.
+
+- Records the live 0.8.0 result: password authentication returned the expected `-11257129` MFA challenge, `authBy2fa` returned `code=0` with an `authorizeCode`, and `loginByAuthorizeCode4Vesync` returned `code=0` with a session token.
+- Keeps the confirmed authentication protocol unchanged; there is no return to endpoint or field-name guessing.
+- After a token is issued, hydrates a fresh `pyvesync.VeSync` manager through `set_credentials()` using blank username/password fields.
+- Performs one normal read-only `get_devices()` request with that MFA-issued session.
+- When exactly one Home Assistant Core VeSync manager is loaded, compares its in-memory device identity set with the temporary MFA-session manager and reports only counts plus `identity_match=yes/no`.
+- Does not create or update config entries, entity/device registry records, entities or platforms.
+- Adds repository checks that require the session validation to stay read-only and keep the probe on its separate diagnostic domain.
+
+This is the final compatibility proof before a production session-persistence/reauthentication design is allowed to touch the existing VeSync integration layer.
+
 ## 0.8.0 — 2026-08-14
 
 Exact MFA protocol implementation based on a browser HAR captured from VeSync's own account website.
@@ -13,7 +27,7 @@ Exact MFA protocol implementation based on a browser HAR captured from VeSync's 
 - Adds a manually validated numeric-OTP check without reintroducing the unsupported `vol.Match` frontend-schema problem.
 - Keeps the built-in Home Assistant VeSync integration completely untouched.
 
-The official web bundle also confirmed VeSync's MFA field mapping: `email` → `emailCode`, `otp` → `otpCode`, and `backupCode` → `backupCode`. The bundle exposes a separate trusted-device endpoint as well; 0.8.0 does not call it.
+The official web bundle also confirmed VeSync's MFA field mapping: `email` -> `emailCode`, `otp` -> `otpCode`, and `backupCode` -> `backupCode`. The bundle exposes a separate trusted-device endpoint as well; 0.8.0 does not call it.
 
 ## 0.7.1 — 2026-08-13
 
