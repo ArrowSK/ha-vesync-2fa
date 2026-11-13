@@ -5,7 +5,7 @@
 Compatibility update for Home Assistant Core 2026.11.
 
 - Adds the missing `button` platform proxy for Core's new VeSync purifier filter-reset button.
-- Aligns the required `pyvesync` version with Home Assistant Core 2026.11.1 (`3.5.1`).
+- Requires `pyvesync>=3.5.1`, compatible with Home Assistant Core 2026.11.1, without overriding Core's dependency pin.
 - Sets the minimum supported Home Assistant version to 2026.11.0 for this build.
 - Extends runtime CI to 2026.11.1 and checks that **every** platform declared by Core is importable through the custom integration and delegates `async_setup_entry` unchanged.
 - Leaves MFA, session persistence, config entries and existing entity identity logic unchanged.
