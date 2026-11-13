@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repository checks for VeSync 2FA 1.0.1."""
+"""Repository checks for VeSync 2FA 1.0.2."""
 
 from __future__ import annotations
 
@@ -43,15 +43,16 @@ def main() -> None:
 
     if manifest.get("domain") != "vesync":
         fail("production integration must retain the Core vesync domain")
-    if manifest.get("version") != "1.0.1":
-        fail("production manifest version must be 1.0.1")
-    if manifest.get("requirements") != ["pyvesync==3.4.2"]:
-        fail("production build must retain the Core 2026.8 pyvesync pin")
+    if manifest.get("version") != "1.0.2":
+        fail("production manifest version must be 1.0.2")
+    if manifest.get("requirements") != ["pyvesync>=3.5.1"]:
+        fail("production build must require Core 2026.11-compatible pyvesync")
     if strings != translation:
         fail("production strings and English translation must match")
 
     required_platforms = (
         "binary_sensor.py",
+        "button.py",
         "fan.py",
         "humidifier.py",
         "light.py",
