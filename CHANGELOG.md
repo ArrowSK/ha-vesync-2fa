@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2 — 2026-11-13
+
+Compatibility update for Home Assistant Core 2026.11.
+
+- Adds the missing `button` platform proxy for Core's new VeSync purifier filter-reset button.
+- Aligns the required `pyvesync` version with Home Assistant Core 2026.11.1 (`3.5.1`).
+- Sets the minimum supported Home Assistant version to 2026.11.0 for this build.
+- Extends runtime CI to 2026.11.1 and checks that **every** platform declared by Core is importable through the custom integration and delegates `async_setup_entry` unchanged.
+- Leaves MFA, session persistence, config entries and existing entity identity logic unchanged.
+
 ## 1.0.1 — 2026-08-14
 
 Field fix for upgrading an existing Home Assistant Core VeSync entry to the production same-domain 2FA component.
