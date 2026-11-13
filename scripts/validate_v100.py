@@ -45,8 +45,8 @@ def main() -> None:
         fail("production integration must retain the Core vesync domain")
     if manifest.get("version") != "1.0.2":
         fail("production manifest version must be 1.0.2")
-    if manifest.get("requirements") != ["pyvesync==3.5.1"]:
-        fail("production build must match the Core 2026.11 pyvesync pin")
+    if manifest.get("requirements") != ["pyvesync>=3.5.1"]:
+        fail("production build must require Core 2026.11-compatible pyvesync")
     if strings != translation:
         fail("production strings and English translation must match")
 
