@@ -117,7 +117,7 @@ Home Assistant Core 2026.11.1 pins `pyvesync==3.5.1`; this custom integration de
 
 The production compatibility layer imports the Core 2026.11 VeSync platforms instead of copying their entity implementations. This keeps normal device behavior aligned with the Home Assistant version for which this release is validated.
 
-CI checks repository structure, Python compilation, Hassfest, HACS validation, Home Assistant runtime imports, config-flow schema serialization, the confirmed MFA protocol markers, session persistence invariants, legacy reauthentication identity migration and the production same-domain compatibility layer. The repository is also checked to expose only the single `vesync` integration to HACS and to contain no HAR or captured token material.
+CI checks repository structure, Python compilation, Hassfest, HACS validation, Home Assistant runtime imports, config-flow schema validation, the confirmed MFA protocol markers, session persistence invariants, legacy reauthentication identity migration and the production same-domain compatibility layer. The repository is also checked to expose only the single `vesync` integration to HACS and to contain no HAR or captured token material.
 
 ## Upstream status
 
