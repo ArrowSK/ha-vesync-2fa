@@ -9,8 +9,6 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-from homeassistant.helpers import config_validation as cv
-import voluptuous_serialize
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -43,14 +41,16 @@ def main() -> None:
 
     flow = flow_module.VeSyncFlowHandler()
     flow.hass = SimpleNamespace(config=SimpleNamespace(country="HU"))
-    serialized_user = voluptuous_serialize.convert(
-        flow_module.DATA_SCHEMA, custom_serializer=cv.custom_serializer
+    # Validate the actual schemas, without relying on the former frontend
+    # schema-serializer dependency removed from current Home Assistant Core.
+    user_data = flow_module.DATA_SCHEMA(
+        {"username": "test@example.invalid", "password": "dummy-secret"}
     )
-    serialized_mfa = voluptuous_serialize.convert(
-        flow._mfa_schema(), custom_serializer=cv.custom_serializer
+    mfa_data = flow._mfa_schema()(
+        {"otp_code": "123456", "country_code": "HU"}
     )
-    assert len(serialized_user) == 2
-    assert len(serialized_mfa) == 2
+    assert set(user_data) == {"username", "password"}
+    assert set(mfa_data) == {"otp_code", "country_code"}
 
     current = SimpleNamespace(unique_id="12345", data={"username": "same@example.com"})
     assert flow._same_reauth_account(
@@ -79,7 +79,7 @@ def main() -> None:
     print("Production VeSync override import: OK")
     print("Core platform proxy imports: OK")
     print("MFA region/error helpers: OK")
-    print("User and MFA form serialization: OK")
+    print("User and MFA form input schemas: OK")
     print("Legacy reauth identity compatibility: OK")
 
 
