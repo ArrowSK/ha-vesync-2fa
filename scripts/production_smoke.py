@@ -22,17 +22,20 @@ def main() -> None:
     mfa = importlib.import_module("custom_components.vesync.mfa")
     importlib.import_module("custom_components.vesync.coordinator")
 
-    for platform in (
-        "binary_sensor", "fan", "humidifier", "light", "number",
-        "select", "sensor", "switch", "update", "diagnostics",
-    ):
-        importlib.import_module(f"custom_components.vesync.{platform}")
+    # Fail when a new Core platform (such as 2026.11 button) has no proxy.
+    # This checks actual imported objects as well as file presence.
+    for platform in integration.PLATFORMS:
+        platform_name = platform.value
+        proxy = importlib.import_module(f"custom_components.vesync.{platform_name}")
+        core = importlib.import_module(f"homeassistant.components.vesync.{platform_name}")
+        assert proxy.async_setup_entry is core.async_setup_entry
+    importlib.import_module("custom_components.vesync.diagnostics")
 
     manifest = json.loads(
         (ROOT / "custom_components" / "vesync" / "manifest.json").read_text()
     )
     assert manifest["domain"] == "vesync"
-    assert manifest["version"] == "1.0.1"
+    assert manifest["version"] == "1.0.2"
     assert integration.PLATFORMS
     assert mfa.region_for_country("HU") == "EU"
     assert mfa.region_for_country("US") == "US"
