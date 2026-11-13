@@ -113,7 +113,7 @@ Version 1.0.2 is built and tested against:
 - Home Assistant Core 2026.11.1;
 - `pyvesync==3.5.1`.
 
-Home Assistant Core 2026.11.1 pins `pyvesync==3.5.1`, matching this custom integration.
+Home Assistant Core 2026.11.1 pins `pyvesync==3.5.1`; this custom integration declares `pyvesync>=3.5.1` so Core retains control of the installed version.
 
 The production compatibility layer imports the Core 2026.11 VeSync platforms instead of copying their entity implementations. This keeps normal device behavior aligned with the Home Assistant version for which this release is validated.
 
