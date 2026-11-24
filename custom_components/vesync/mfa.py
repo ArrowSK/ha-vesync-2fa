@@ -1,24 +1,18 @@
-"""VeSync authenticator-code flow captured from the official account website."""
+"""VeSync authenticator-code flow on the app API host, the host pyvesync uses."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import md5
-import secrets
 from typing import Any
-from uuid import uuid4
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 from pyvesync.const import API_BASE_URL_EU, API_BASE_URL_US, NON_EU_COUNTRY_CODES
-from pyvesync.models.vesync_models import RequestLoginTokenModel
+from pyvesync.models.vesync_models import RequestGetTokenModel, RequestLoginTokenModel
 
-_ACCOUNT_GLOBAL = "https://accountapi.vesync.com"
-_ACCOUNT_EU = "https://accountapi.vesync.eu"
 _AUTH_ENDPOINT = "/globalPlatform/api/accountAuth/v1/authByPWDOrOTM"
 _MFA_ENDPOINT = "/globalPlatform/api/accountAuth/v1/authBy2fa"
 _LOGIN_ENDPOINT = "/user/api/accountManage/v1/loginByAuthorizeCode4Vesync"
 _MFA_REQUIRED_CODE = -11257129
-_BIZ_SYSTEM_ID = "28005ad6-fca3-4634-9b43-ac47129c3b70"
 _TIMEOUT = ClientTimeout(total=12)
 
 
@@ -59,48 +53,17 @@ def is_mfa_required_error(error: Exception) -> bool:
     return "2fa authentication" in text or "requires 2fa" in text
 
 
-def _web_context(
-    *,
-    method: str,
-    time_zone: str,
-    terminal_id: str,
-    app_id: str,
-    account_id: str = "common",
-) -> dict[str, Any]:
-    return {
-        "timeZone": time_zone,
-        "clientType": "mobile",
-        "osInfo": "AndroidOS",
-        "phoneOS": "AndroidOS",
-        "clientInfo": "Home Assistant",
-        "phoneBrand": "HomeAssistant",
-        "clientVersion": "V1.0.1",
-        "appVersion": "Home Assistant",
-        "terminalId": terminal_id,
-        "debugMode": False,
-        "bizSystemId": _BIZ_SYSTEM_ID,
-        "acceptLanguage": "en",
-        "traceId": f"HA{secrets.token_hex(10)}",
-        "appID": app_id,
-        "sourceAppID": app_id,
-        "token": "common",
-        "accountID": account_id or "common",
-        "method": method,
-    }
-
-
-async def _post_wrapped(
+async def _post_json(
     session: ClientSession,
     *,
     base_url: str,
     endpoint: str,
-    context: dict[str, Any],
-    data: dict[str, Any],
+    body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
     try:
         async with session.post(
             base_url + endpoint,
-            json={"context": context, "data": data},
+            json=body,
             timeout=_TIMEOUT,
             raise_for_status=False,
         ) as response:
@@ -119,7 +82,10 @@ def _raise_auth_error(status: int, raw: dict[str, Any]) -> None:
         raise MFARateLimited("VeSync rate-limited the authentication request")
     if "locked" in message or "frozen" in message:
         raise MFAAccountLocked("VeSync reported the account as locked")
-    if any(word in message for word in ("invalid", "incorrect", "wrong", "expired")):
+    if any(
+        word in message
+        for word in ("invalid", "incorrect", "wrong", "expired", "does not match")
+    ):
         raise MFAInvalidCode("The authenticator code was rejected or expired")
     raise MFAError("VeSync rejected the MFA request")
 
@@ -171,10 +137,10 @@ async def _exchange_authorize_code(
     )
 
 
-async def _login_on_account_host(
+async def _login_on_api_host(
     session: ClientSession,
     *,
-    account_base: str,
+    api_base: str,
     username: str,
     password: str,
     otp_code: str,
@@ -182,27 +148,18 @@ async def _login_on_account_host(
     region: str,
     time_zone: str,
 ) -> MFASession:
-    terminal_id = f"MallWeb-{uuid4()}"
-    app_id = secrets.token_hex(4)
-    password_hash = md5(password.encode("utf-8")).hexdigest()  # noqa: S324
+    # All three steps go to the same app API host with one terminalId. The token
+    # exchange only accepts an authorizeCode issued by that host: one issued by the
+    # account website host was refused there with -11265129 "login temporary auth
+    # code expired".
+    first_request = RequestGetTokenModel(
+        email=username, method="authByPWDOrOTM", password=password
+    ).to_dict()
+    terminal_id = first_request["terminalId"]
 
-    status, first = await _post_wrapped(
-        session,
-        base_url=account_base,
-        endpoint=_AUTH_ENDPOINT,
-        context=_web_context(
-            method="authByPWDOrOTM",
-            time_zone=time_zone,
-            terminal_id=terminal_id,
-            app_id=app_id,
-        ),
-        data={
-            "password": password_hash,
-            "email": username,
-            "authProtocolType": "generic",
-        },
+    status, first = await _post_json(
+        session, base_url=api_base, endpoint=_AUTH_ENDPOINT, body=first_request
     )
-    password_hash = ""
     first_result = first.get("result") if isinstance(first.get("result"), dict) else {}
     if first.get("code") == 0:
         authorize_code = first_result.get("authorizeCode")
@@ -220,26 +177,24 @@ async def _login_on_account_host(
         _raise_auth_error(status, first)
 
     biz_token = first_result.get("bizToken")
-    account_id = first_result.get("accountID")
     if not isinstance(biz_token, str) or not biz_token:
         raise MFAError("VeSync MFA challenge did not contain a challenge token")
 
-    status, second = await _post_wrapped(
-        session,
-        base_url=account_base,
-        endpoint=_MFA_ENDPOINT,
-        context=_web_context(
-            method="authBy2fa",
-            time_zone=time_zone,
-            terminal_id=terminal_id,
-            app_id=app_id,
-            account_id=account_id if isinstance(account_id, str) and account_id else "common",
-        ),
-        data={
+    second_request = {
+        key: value
+        for key, value in first_request.items()
+        if key not in ("email", "password", "authProtocolType")
+    }
+    second_request.update(
+        {
+            "method": "authBy2fa",
             "mfaMethod": "otp",
             "bizToken": biz_token,
             "otpCode": otp_code,
-        },
+        }
+    )
+    status, second = await _post_json(
+        session, base_url=api_base, endpoint=_MFA_ENDPOINT, body=second_request
     )
     if second.get("code") != 0:
         _raise_auth_error(status, second)
@@ -270,9 +225,9 @@ async def async_login_with_otp(
     """Complete the verified VeSync password + authenticator flow."""
     region = region_for_country(country_code)
     try:
-        return await _login_on_account_host(
+        return await _login_on_api_host(
             session,
-            account_base=_ACCOUNT_GLOBAL,
+            api_base=API_BASE_URL_US,
             username=username,
             password=password,
             otp_code=otp_code,
@@ -285,9 +240,9 @@ async def async_login_with_otp(
     except MFAError:
         if region != "EU":
             raise
-    return await _login_on_account_host(
+    return await _login_on_api_host(
         session,
-        account_base=_ACCOUNT_EU,
+        api_base=API_BASE_URL_EU,
         username=username,
         password=password,
         otp_code=otp_code,
